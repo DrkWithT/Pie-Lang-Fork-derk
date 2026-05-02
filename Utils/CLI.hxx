@@ -13,6 +13,8 @@
 #include "../Parser/Parser.hxx"
 #include "../Analysis/LexicalScoping.hxx"
 #include "../Interp/Interpreter.hxx"
+#include "../VM/ByteCode.hxx"
+#include "../VM/Compiler.hxx"
 
 
 
@@ -78,6 +80,34 @@ namespace cli {
     }
 
 
+    // ! EXPERIMENTAL: This will run the Cherry VM after simple expression code emits properly.
+    void runExperimental(const std::filesystem::path fname, const bool dump) {
+        auto src = util::readFile(fname.string());
+        auto cloned_src = src;
+        auto processed_src = std::move(src);
+
+        Tokens v = lex::lex(std::move(processed_src));
+
+        if (v.empty()) return;
+
+        Parser p {std::move(v), fname};
+
+        auto ast = p.parse();
+
+        pie::analysis::LexicalAnalysis anal;
+        for (const auto& [exprs, ops] = ast; const auto& expr : exprs)
+            std::visit(anal, expr->variant());
+
+        pie::vm::Compiler cherryc;
+
+        auto program_result = cherryc(ast, cloned_src);
+
+        if (dump && program_result) {
+            display_all_bytecode(program_result.value());
+        } else {
+            std::print("{}", program_result.error());
+        }
+    }
 
     void runFile(
         const std::filesystem::path fname,

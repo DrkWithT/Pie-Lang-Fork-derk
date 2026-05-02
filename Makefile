@@ -7,7 +7,7 @@ VER = -std=c++23
 OPT = -O2
 ARGS = -Wall -Wextra -Wpedantic -Wno-missing-braces #-Wnrvo
 WEB_ARGS = -sWASM=1 -sFORCE_FILESYSTEM -sEXPORTED_RUNTIME_METHODS='["callMain"]' -sASSERTIONS -sENVIRONMENT=web
-CPP = Type/*.cxx Interp/*.cxx
+CPP = Type/*.cxx Interp/*.cxx VM/*.cxx
 SAN = -fsanitize=address -fsanitize=undefined -g3
 
 OUTPUT_NAME = Pie

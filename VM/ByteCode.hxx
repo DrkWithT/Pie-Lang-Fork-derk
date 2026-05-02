@@ -1,12 +1,145 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <array>
+#include <vector>
+#include <print>
 
-namespace pie {
+#include "../VM/FastValue.hxx"
 
-enum class Code {
-    LOAD_OR_JUMP,
-    STORE,
-};
+namespace pie{
+    namespace vm {
 
-
+        enum class Opcode : std::uint8_t {
+            // * Filler / pseudo ops
+            nop,
+            
+            // * Begin environment ops
+            start_env,  // ? pushes a new variable environment
+            end_env,    // ? pops the current environment
+            bind,   // ? stores the top stack value into an environment entry via immediate string ID / ptr.
+            unbind, // ? deletes an entry via immediate string ID / ptr.
+            lookup, // ? looks up an environment-associated value via immediate string ID / ptr.
+            deref,
+            
+            // * Begin stack ops
+            push_global,    // ? pushes a global object e.g __builtin_add() by immediate ID.
+            push_const,     // ? pushes a function's chunk constant by immediate ID... It may be a string, number, or something else undeclared.
+            pop_n,          // ? lazy pops N things from the stack
+            
+            // * Begin builtin ops
+            mod,
+            div,
+            mul,
+            add,
+            sub,
+            eq,
+            ne,
+            gt,
+            gte,
+            lt,
+            lte,
+            print,
+            
+            // * Begin control flow
+            jump,
+            jump_else,
+            call,
+            ret,
+            
+            // * Extra ops
+            halt_errcode,
+            last
+        };
+        
+        struct Instruction {
+            std::int16_t arg_wide;
+            std::int8_t arg_tiny;
+            Opcode op;
+        };
+        
+        struct Chunk {
+            std::vector<Instruction> code;
+            std::vector<FastValue> constants;
+            std::vector<std::string> identifiers;
+            
+            friend constexpr void display_chunk_data(const Chunk& c, int id) {
+                static constexpr std::array<std::string_view, static_cast<std::size_t>(Opcode::last)> opcode_names = {
+                    "nop",
+                    "start_env",
+                    "end_env",
+                    "bind",
+                    "unbind",
+                    "lookup",
+                    "deref",
+                    "push_global",
+                    "push_const",
+                    "pop_n",
+                    "mod",
+                    "div",
+                    "mul",
+                    "add",
+                    "sub",
+                    "eq",
+                    "ne",
+                    "gt",
+                    "gte",
+                    "lt",
+                    "lte",
+                    "print",
+                    "jump",
+                    "jump_else",
+                    "call",
+                    "ret",
+                    "halt_errcode"
+                };
+                
+                const auto& [c_code, c_consts, c_idents] = c;
+                
+                if (id <= 0) {
+                    std::println("\x1b[1;33mMAIN CHUNK:\x1b[0m\n");
+                }
+                
+                std::println("\x1b[1;33mCONSTANTS:\x1b[0m\n");
+                for (int konst_id = 0; const auto& konst : c_consts) {
+                    std::println("CONST {} = {}", konst_id, konst.to_string());
+                    konst_id++;
+                }
+                
+                std::println("\x1b[1;33mKEY STRINGS:\x1b[0m\n");
+                for (int key_id = 0; const auto& key_str : c_idents) {
+                    std::println("KEY {} = {}", key_id, key_str);
+                    key_id++;
+                }
+                
+                std::println("\x1b[1;33mCODE:\x1b[0m\n");
+                for (int code_pos = 0; const auto& [wide_op, tiny_op, opcode] : c_code) {
+                    std::println(
+                        "{}: {}   t{}, w{}",
+                        code_pos,
+                        opcode_names.at(static_cast<std::uint32_t>(opcode)),
+                        static_cast<std::int16_t>(tiny_op),
+                        wide_op
+                    );
+                    code_pos++;
+                }
+            }
+        };
+        
+        struct Program {
+            Chunk main_code;
+            std::vector<std::unique_ptr<ObjectBase>> globals;
+            
+            friend constexpr void display_all_bytecode(const Program& p) {
+                const auto& [main_chunk, all_globals] = p;
+                
+                std::println("\x1b[1;33m---- BYTECODE DUMP ----\x1b[0m\n\n");
+                
+                // ? display bytecode for top-level statements
+                display_chunk_data(main_chunk, 0);
+            }
+        };
+    }
 } // namespace pie

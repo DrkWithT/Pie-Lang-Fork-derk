@@ -16,7 +16,8 @@ int main(int argc, char *argv[]) {
     bool print_tokens       = false;
     bool print_parsed       = false;
     bool print_help         = false;
-    bool run_experimental   = false; // ? Cherry bytecode dump (VM to-do!)
+    bool run_experimental   = false; // ? run Cherry??
+    bool allow_bc_dump      = false; // ? Cherry bytecode dump (VM to-do!) 
     bool run                = true;
     bool repl               = false;
 
@@ -30,6 +31,7 @@ int main(int argc, char *argv[]) {
         else if (argv[1] == "-pre"sv  ) print_preprocessed = true ;
         else if (argv[1] == "-help"sv ) print_help         = true ;
         else if (argv[1] == "-exp"sv  ) run_experimental   = true ;
+        else if (argv[1] == "-dump"sv ) allow_bc_dump      = true ;
         else if (argv[1] == "-run"sv  ) run                = false;
         else if (argv[1] == "-repl"sv ) repl               = true ;
         else fname = argv[1];
@@ -48,15 +50,13 @@ int main(int argc, char *argv[]) {
             print_preprocessed, print_tokens, print_parsed, run
         );
     } else if (run_experimental) {
-        // TODO: fix Cherry codegen to do arithmetic.
-        // TODO: create Cherry VM.
-        // ? Pass 'true' to dump bytecode for easy debugging.
-        pie::cli::runExperimental(std::move(fname), true);
-    } else try {
-        pie::cli::runFile(std::move(fname), print_preprocessed, print_tokens, print_parsed, run);
-    }
-    catch(const std::exception& e) {
-        std::cerr << e.what() << std::endl;
-        return 1;
+        return pie::cli::runExperimental(std::move(fname), allow_bc_dump);
+    } else {
+        try {
+            pie::cli::runFile(std::move(fname), print_preprocessed, print_tokens, print_parsed, run);
+        } catch (const std::exception& e) {
+            std::cerr << e.what() << std::endl;
+            return 1;
+        }
     }
 }

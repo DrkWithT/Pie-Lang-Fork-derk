@@ -208,11 +208,14 @@ namespace pie{
 
             if (auto maybe_declared_locus = lookup_local(lexeme); maybe_declared_locus) {
                 encode_instruction(Opcode::lookup, 0, maybe_declared_locus->id);
-                return true;
+            } else if (auto maybe_global_locus = lookup_global(lexeme); maybe_global_locus) {
+                encode_instruction(Opcode::push_global, 0, maybe_global_locus->id);
+            } else {
+                std::println(std::cerr, "\tNote: In emit_name(), identifier '{}' was undeclared.", lexeme);
+                return false;
             }
 
-            std::println(std::cerr, "\tNote: In emit_name(), identifier '{}' was undeclared.", lexeme);
-            return false;
+            return true;
         }
 
         [[nodiscard]] bool Compiler::emit_assignment(const expr::Assignment* expr) {
@@ -232,21 +235,37 @@ namespace pie{
         }
 
         [[nodiscard]] bool Compiler::emit_match(const expr::Match* expr) {
-            // TODO: implement!
             std::println(std::cerr, "Compile error at emit_match(): unsupported expression!");
             return false;
         }
 
         [[nodiscard]] bool Compiler::emit_block(const expr::Block* expr) {
-            // TODO: implement!
             std::println(std::cerr, "Compile error at emit_block(): unsupported expression!");
             return false;
         }
 
         [[nodiscard]] bool Compiler::emit_call(const expr::Call* expr) {
-            // TODO: implement!
-            std::println(std::cerr, "Compile error at emit_call(): unsupported expression!");
-            return false;
+            const auto& [callee_expr, named_args, args] = *expr;
+
+            if (!emit_expr(callee_expr)) {
+                std::println(std::cerr, "\tNote: In emit_call(): invalid callee expression visited.");
+                return false;
+            }
+
+            encode_instruction(Opcode::ref_env);
+
+            for (std::uint16_t argc = 0; const auto& arg_expr : args) {
+                if (!emit_expr(arg_expr)) {
+                    std::println(std::cerr, "\tNote: Invalid expression for arg {} of function:\n{}", argc, callee_expr->stringify());
+                    return false;
+                }
+
+                argc++;
+            }
+
+            encode_instruction(Opcode::call, static_cast<std::uint16_t>(args.size()));
+
+            return true;
         }
 
         [[nodiscard]] bool Compiler::emit_expr(const expr::ExprPtr& any_expr) {
@@ -262,6 +281,8 @@ namespace pie{
                 return emit_name(*expr_name);
             } else if (auto expr_assign = std::get_if<const expr::Assignment*>(&expr_variant); expr_assign) {
                 return emit_assignment(*expr_assign);
+            } else if (auto expr_call = std::get_if<const expr::Call*>(&expr_variant); expr_call) {
+                return emit_call(*expr_call);
             } else {
                 std::println(std::cerr, "Compile error at emit_expr(): unknown expression type!");
                 return false;

@@ -19,8 +19,8 @@ namespace pie{
             // * Begin environment ops
             start_env,  // ? pushes a new variable environment
             end_env,    // ? pops the current environment
+            ref_env,
             bind,   // ? stores the top stack value into an environment entry via immediate string ID / ptr.
-            unbind, // ? deletes an entry via immediate string ID / ptr.
             lookup, // ? looks up an environment-associated value via immediate string ID / ptr.
             deref,
             
@@ -29,24 +29,10 @@ namespace pie{
             push_const,     // ? pushes a function's chunk constant by immediate ID... It may be a string, number, or something else undeclared.
             pop_n,          // ? lazy pops N things from the stack
             
-            // * Begin builtin ops
-            mod,
-            div,
-            mul,
-            add,
-            sub,
-            eq,
-            ne,
-            gt,
-            gte,
-            lt,
-            lte,
-            print,
-            
             // * Begin control flow
             jump,
             jump_else,
-            call,
+            call,   // ? invokes a function, built-in or custom, upon the stack... INVARIANT: the function, environment arg, and temporary locals pushed prior.
             ret,
             
             // * Extra ops
@@ -70,25 +56,13 @@ namespace pie{
                     "nop",
                     "start_env",
                     "end_env",
+                    "ref_env",
                     "bind",
-                    "unbind",
                     "lookup",
                     "deref",
                     "push_global",
                     "push_const",
                     "pop_n",
-                    "mod",
-                    "div",
-                    "mul",
-                    "add",
-                    "sub",
-                    "eq",
-                    "ne",
-                    "gt",
-                    "gte",
-                    "lt",
-                    "lte",
-                    "print",
                     "jump",
                     "jump_else",
                     "call",

@@ -1,11 +1,13 @@
 #pragma once
 
-#include <cstdint>
+#include <cmath>
 #include <type_traits>
 #include <utility>
 #include <memory>
 #include <string_view>
 #include <string>
+#include <any>
+#include <variant>
 
 namespace pie {
     namespace vm {
@@ -56,31 +58,32 @@ namespace pie {
         class ObjectBase {
         public:
             enum class ContainerPolicy : std::uint8_t {
-                str,    //? for strings
-                listy,  //? for lists
-                assoc   //? for objects
+                key,    //? for strings
+                index,
+                chase   //? for traversing an environment object chain
             };
 
             virtual ~ObjectBase() = default;
 
             virtual std::string get_typename( ) const = 0;
+            virtual ObjectBase* get_super() noexcept = 0;
 
             //? Use this for resolving original values behind references / accessing data in Any values e.g `x: Any = 1234, x = {1, 2, 3, 4};`
             virtual const FastValue* resolve( ) const = 0; //? non-mutating overload here
             virtual FastValue* resolve( ) = 0;
 
             //? If implemented, the VM state is affected, usually by preparing the stack offsets & call frame as additional state. Otherwise, return false for non-functional objects.
-            virtual bool call(int arg_count) = 0;
+            virtual bool call(std::any state_ref, int arg_count) = 0;
 
             //! NOTE: for every builtin specified, create a custom function for ObjectBase.
             
-            virtual FastValue neg() const = 0;
-            virtual FastValue pow(const FastValue& rhs) const = 0;
-            virtual FastValue mul(const FastValue& rhs) const = 0;
-            virtual FastValue div(const FastValue& rhs) const = 0;
-            virtual FastValue mod(const FastValue& rhs) const = 0;
-            virtual FastValue add(const FastValue& rhs) const = 0;
-            virtual FastValue sub(const FastValue& rhs) const = 0;
+            virtual FastValue neg() = 0;
+            virtual FastValue pow(const FastValue& rhs) = 0;
+            virtual FastValue mul(const FastValue& rhs) = 0;
+            virtual FastValue div(const FastValue& rhs) = 0;
+            virtual FastValue mod(const FastValue& rhs) = 0;
+            virtual FastValue add(const FastValue& rhs) = 0;
+            virtual FastValue sub(const FastValue& rhs) = 0;
 
             //? Converts an ObjectBase to a bool via truthiness rules.
             virtual bool test( ) const = 0;
@@ -96,13 +99,13 @@ namespace pie {
             virtual bool cmp_lt(const FastValue& rhs) const = 0;
             virtual bool cmp_leq(const FastValue& rhs) const = 0;
 
-            virtual FastValue get_item(const Value& key, ContainerPolicy policy) const = 0;
+            virtual FastValue get_item(const FastValue& key, ContainerPolicy policy) const = 0;
 
             //? Covers set / push / concat for objects. A special enum is passed in to indicate whether to attempt list / object operations.
-            virtual FastValue put_item(const Value& key, const Value& item, ContainerPolicy policy) = 0;
+            virtual FastValue put_item(const FastValue& key, const FastValue& item, ContainerPolicy policy) = 0;
 
             //? Covers remove / pop for container objects. A special enum is passed in to indicate whether to attempt list / object operations.
-            virtual FastValue del_item(const Value& key, ContainerPolicy policy) = 0;
+            virtual FastValue del_item(const FastValue& key, ContainerPolicy policy) = 0;
 
             // todo: figure out builtin_conditional semantics...
         };
@@ -142,6 +145,14 @@ namespace pie {
                 }
 
                 return *this;
+            }
+
+            const std::string* as_str_ptr() const noexcept {
+                if (auto temp = std::get_if<const std::string*>(&m_data); temp != nullptr) {
+                    return *temp;
+                }
+
+                return nullptr;
             }
 
             [[nodiscard]] constexpr FastValue* as_value_ref() noexcept {

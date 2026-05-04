@@ -9,7 +9,6 @@
 
 #include "../VM/ByteCode.hxx"
 #include "../VM/Environment.hxx"
-#include "../VM/Functions.hxx"
 
 namespace pie {
     namespace vm {
@@ -18,6 +17,7 @@ namespace pie {
             ok,
             bad_alloc,
             bad_call,
+            bad_recursion,
             user_abort
         };
 
@@ -30,6 +30,8 @@ namespace pie {
         };
 
         struct Context {
+            static constexpr int calls_max_depth = 128;
+
             Chunk main_code;
             std::vector<Environment> envs;                      // ? environment stack
             std::vector<std::unique_ptr<ObjectBase>> globals;   // ? global objects including built-ins
@@ -44,6 +46,7 @@ namespace pie {
 
             explicit constexpr Context(Program p, int local_capacity) noexcept
             : main_code (std::move(p.main_code)), envs {}, globals (std::move(p.globals)), stack {}, frames {}, ip {nullptr}, cvp {nullptr}, idp {nullptr}, bp {0}, sp {0}, status {VMStatus::pending} {
+                envs.reserve(calls_max_depth);
                 stack.reserve(local_capacity);
                 stack.resize(local_capacity);
 
@@ -61,8 +64,12 @@ namespace pie {
             }
         };
 
-        // TODO: move native built-ins to a specific VM source.
+        // TODO: move native built-ins to a specific VM source... these are meant for a Fib 20 demo.
+        [[maybe_unused]] bool pie_native_add(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_sub(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_lt(std::any context, int argc);
         [[maybe_unused]] bool pie_native_print(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_now(std::any context, int argc);
 
         void op_nop(Context& c);
         void op_start_env(Context& c);
@@ -70,6 +77,7 @@ namespace pie {
         void op_ref_env(Context& c);
         void op_bind(Context& c);
         void op_lookup(Context& c);
+        void op_lookup_by_const(Context& c);
         void op_deref(Context& c);
         void op_push_global(Context& c);
         void op_push_const(Context& c);
@@ -92,7 +100,7 @@ namespace pie {
             constexpr VM(Program prgm, int local_slots) noexcept
             : op_table {{
                 &op_nop,
-                &op_start_env, &op_end_env, &op_ref_env, &op_bind, &op_lookup,
+                &op_start_env, &op_end_env, &op_ref_env, &op_bind, &op_lookup, &op_lookup_by_const,
                 &op_deref, &op_push_global, &op_push_const, &op_pop_n,
                 &op_jump, &op_jump_else, &op_call, &op_ret, &op_halt_errcode
             }}, m_context (std::move(prgm), local_slots) {}

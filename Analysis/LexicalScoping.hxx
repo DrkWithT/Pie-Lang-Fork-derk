@@ -30,6 +30,7 @@ struct LexicalAnalysis {
             "Type",
 
             "__builtin_print",
+            "__builtin_now",
             "__builtin_concat", 
             "__builtin_panic",
             "__builtin_input_str",

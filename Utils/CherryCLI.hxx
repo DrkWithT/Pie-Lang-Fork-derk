@@ -16,6 +16,7 @@
 #include "../Parser/Parser.hxx"
 #include "../Analysis/LexicalScoping.hxx"
 #include "../VM/Compiler.hxx"
+#include "../VM/Functions.hxx"
 #include "../VM/Cherry.hxx"
 
 inline namespace pie {
@@ -66,9 +67,7 @@ inline namespace pie {
                     }
                 }
 
-                pie::vm::Compiler cherryc;
-
-                if (auto program_result = cherryc(ast, cloned_src)) {
+                if (auto program_result = m_compiler(ast, cloned_src)) {
                     return std::optional {std::move(program_result.value())};
                 } else {
                     std::println(std::cerr, "{}", program_result.error());
@@ -84,6 +83,7 @@ inline namespace pie {
                     return false;
                 } else if (dump) {
                     display_all_bytecode(program.value());
+                    return true;
                 }
 
                 auto run_ok = true;
@@ -97,7 +97,7 @@ inline namespace pie {
 
                     std::println(
                         "\x1b[1;33mRuntime:\x1b[0m {}\n\x1b[1;33mResult: {}\x1b[0m\n",
-                        runtime,
+                        std::chrono::duration_cast<std::chrono::milliseconds>(runtime),
                         cherry_engine.result().to_string()
                     );
                 }
@@ -111,13 +111,37 @@ inline namespace pie {
         [[nodiscard]] int runExperimental(const std::filesystem::path fname, const bool dump) {
             cherry::Driver driver {cherry::Config {
                 .name = "Cherry (experimental Pie VM)",
-                .local_capacity = 2048,
+                .local_capacity = 3072,
                 .heap_capacity = 256
             }};
+
+            driver.add_builtin("__builtin_add", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_add,
+                "__builtin_add",
+                2
+            ));
+
+            driver.add_builtin("__builtin_sub", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_sub,
+                "__builtin_sub",
+                2
+            ));
+
+            driver.add_builtin("__builtin_lt", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_lt,
+                "__builtin_lt",
+                2
+            ));
 
             driver.add_builtin("__builtin_print", std::make_unique<vm::BuiltIn>(
                 vm::pie_native_print,
                 "__builtin_print",
+                1
+            ));
+
+            driver.add_builtin("__builtin_now", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_now,
+                "__builtin_now",
                 1
             ));
 

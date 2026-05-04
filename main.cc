@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
             std::move(canonical_root),
             print_preprocessed, print_tokens, print_parsed, run
         );
-    } else if (run_experimental) {
+    } else if (run_experimental || allow_bc_dump) {
         return pie::cli::runExperimental(std::move(fname), allow_bc_dump);
     } else {
         try {

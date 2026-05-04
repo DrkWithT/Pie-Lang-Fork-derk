@@ -3,8 +3,9 @@
 
 #include "../Expr/Expr.hxx"
 #include "../VM/Compiler.hxx"
+#include "../VM/Functions.hxx"
 
-namespace pie{
+namespace pie {
     namespace vm {
         [[nodiscard]] std::optional<SymbolInfo> Compiler::lookup_global(const std::string& symbol) {
             if (auto symbol_info_it = m_global_builtin_scope.symbols.find(symbol); symbol_info_it != m_global_builtin_scope.symbols.end()) {
@@ -34,11 +35,21 @@ namespace pie{
             return {};
         }
 
-        [[nodiscard]] std::optional<SymbolInfo> Compiler::record_global(const std::string& symbol, std::unique_ptr<ObjectBase> object_ptr) noexcept {
-            if (auto builtin_global_locus = lookup_global(symbol); builtin_global_locus) {
-                return builtin_global_locus;
+        [[nodiscard]] const std::string* Compiler::lookup_external_name_ptr(const std::string& symbol) {
+            int depth = m_codes.size() - 1;
+
+            for (auto bubbled_it = m_scopes.rbegin(); bubbled_it != m_scopes.rend(); bubbled_it++, depth--) {
+                if (bubbled_it->symbols.contains(symbol)) {
+                    if (const auto& string_key_info = bubbled_it->symbols.at(symbol); string_key_info.type == SymbolType::ident) {
+                        return &m_codes.at(depth).identifiers.at(string_key_info.id);
+                    }
+                }
             }
 
+            return nullptr;
+        }
+
+        [[nodiscard]] std::optional<SymbolInfo> Compiler::record_global(const std::string& symbol, std::unique_ptr<ObjectBase> object_ptr) noexcept {
             SymbolInfo global_locus {
                 .id = static_cast<std::uint16_t>(m_globals.size()),    // ! NOTE: m_globals.size() is the real ID of the new global object.
                 .type = SymbolType::global
@@ -169,10 +180,13 @@ namespace pie{
             const std::string lexeme = expr->stringify();
 
             if (
-                auto maybe_const_locus = record_constant(lexeme, FastValue {std::stof(lexeme)});
-                maybe_const_locus
+                !lookup_global(lexeme).has_value() && !lookup_local(lexeme).has_value() && lexeme.contains('.')
             ) {
-                encode_instruction(Opcode::push_const, 0, maybe_const_locus->id);
+                auto int_locus = record_constant(lexeme, FastValue {std::stof(lexeme)});
+                encode_instruction(Opcode::push_const, 0, int_locus->id);
+            } else if (!lookup_global(lexeme).has_value() && !lookup_local(lexeme).has_value()) {
+                auto float_locus = record_constant(lexeme, FastValue {std::stoi(lexeme)});
+                encode_instruction(Opcode::push_const, 0, float_locus->id);
             } else if (auto maybe_local_locus = lookup_local(lexeme); maybe_local_locus) {
                 encode_instruction(Opcode::lookup, 0, maybe_local_locus->id);
             } else {
@@ -210,8 +224,20 @@ namespace pie{
                 encode_instruction(Opcode::lookup, 0, maybe_declared_locus->id);
             } else if (auto maybe_global_locus = lookup_global(lexeme); maybe_global_locus) {
                 encode_instruction(Opcode::push_global, 0, maybe_global_locus->id);
+            } else if (auto key_ptr = lookup_external_name_ptr(lexeme); key_ptr) {
+                const std::uint16_t next_constant_id = m_scopes.back().next_constant_id;
+
+                m_scopes.back().symbols[lexeme] = SymbolInfo {
+                    .id = next_constant_id,
+                    .type = SymbolType::constant
+                };
+                m_codes.back().constants.emplace_back(FastValue {key_ptr});
+                m_scopes.back().next_constant_id++;
+
+                // ? We'll use a captured name constant, a `const std::string*` from the nearest parent scoped name, for a bottom-up lookup when Cherry runs.
+                encode_instruction(Opcode::lookup_by_const, next_constant_id);
             } else {
-                std::println(std::cerr, "\tNote: In emit_name(), identifier '{}' was undeclared.", lexeme);
+                std::println(std::cerr, "\tNote: In emit_name(), identifier '{}' was undeclared in all scopes at this point.", lexeme);
                 return false;
             }
 
@@ -244,10 +270,46 @@ namespace pie{
             return false;
         }
 
+        [[nodiscard]] bool Compiler::help_emit_conditional(const expr::ExprPtr& check_arg, const expr::ExprPtr& yes, const expr::ExprPtr& no) {
+            if (!emit_expr(check_arg)) {
+                std::println(std::cerr, "Note: help_emit_conditional(): invalid check expression found.");
+                return false;
+            }
+
+            const std::int16_t skip_yes_pos = m_codes.back().code.size();
+            // ? NOTE: the extra 1 passed here means the evaluated check's boolean pops off.
+            encode_instruction(Opcode::jump_else, 1, 0); // ? Temp IP offset of 0 is patched later!
+
+            if (!emit_expr(yes)) {
+                std::println(std::cerr, "Note: help_emit_conditional(): invalid 'if-true' expression found.");
+                return false;
+            }
+
+            const std::int16_t skip_no_pos = m_codes.back().code.size();
+            encode_instruction(Opcode::jump, 0);
+
+            if (!emit_expr(no)) {
+                std::println(std::cerr, "Note: help_emit_conditional(): invalid 'else' expression found.");
+                return false;
+            }
+
+            const std::int16_t end_conditional_pos = m_codes.back().code.size();
+            encode_instruction(Opcode::nop);
+
+            // ? Patch IP offsets of jumps since we know all key jumping / ending positions now.
+            m_codes.back().code.at(skip_yes_pos).arg_wide = (skip_no_pos + 1) - skip_yes_pos;
+            m_codes.back().code.at(skip_no_pos).arg_wide = (end_conditional_pos) - skip_no_pos;
+
+            return true;
+        }
+
         [[nodiscard]] bool Compiler::emit_call(const expr::Call* expr) {
             const auto& [callee_expr, named_args, args] = *expr;
 
-            if (!emit_expr(callee_expr)) {
+            // ! SPECIAL CASE: builtin_conditional lazily evaluates LHS / RHS when CHECK is true / false respectively. Simulate this with a special JUMP_ELSE taking ARG0 & bodies.
+            if (callee_expr->stringify() == "__builtin_conditional") {
+                return help_emit_conditional(args.at(0), args.at(1), args.at(2));
+            } else if (!emit_expr(callee_expr)) {
                 std::println(std::cerr, "\tNote: In emit_call(): invalid callee expression visited.");
                 return false;
             }
@@ -256,7 +318,10 @@ namespace pie{
 
             for (std::uint16_t argc = 0; const auto& arg_expr : args) {
                 if (!emit_expr(arg_expr)) {
-                    std::println(std::cerr, "\tNote: Invalid expression for arg {} of function:\n{}", argc, callee_expr->stringify());
+                    std::println(std::cerr,
+                        "\tNote: Invalid expression for arg {} of function:\n{}",
+                        argc, callee_expr->stringify()
+                    );
                     return false;
                 }
 
@@ -264,6 +329,58 @@ namespace pie{
             }
 
             encode_instruction(Opcode::call, static_cast<std::uint16_t>(args.size()));
+
+            return true;
+        }
+
+        [[nodiscard]] bool Compiler::emit_closure(const expr::Closure* expr) {
+            const auto& [params, body, type, dud, dud2, dud3, dud4] = *expr;
+            
+            m_codes.push_back(Chunk {
+                .code = {},
+                .constants = {},
+                .identifiers = {}
+            });
+            m_scopes.push_back(SymbolScope {
+                .symbols = {},
+                .name = "anonymous-closure",
+                .next_constant_id = 0,
+                .next_ident_key_id = 0
+            });
+            
+            // ? FIRST, bind args to param names in reverse order due to stack LIFO of VM. The environment is implicitly pushed in Lambda::call(...), mapping the last param to 1st param.
+            std::vector<SymbolInfo> param_locuses; // ? Here, push back locuses only!
+
+            for (const auto& param_name : params) {
+                auto temp_locus = record_ident(param_name);
+
+                param_locuses.push_back(*temp_locus);
+            }
+
+            while (!param_locuses.empty()) {
+                encode_instruction(Opcode::bind, param_locuses.back().id);
+                param_locuses.pop_back();
+            }
+
+            if (!emit_expr(body)) {
+                std::println("\tNote: Invalid body expression in anonymous-closure:\n{}", body->stringify());
+                return false;
+            }
+
+            encode_instruction(Opcode::ret);
+
+            auto global_lambda_id = record_global(
+                "", // ? no name because this is an anonymous entity, but a constant global.
+                std::make_unique<Lambda>(
+                    std::move(m_codes.back()),
+                    static_cast<int>(params.size())
+                )
+            )->id;
+
+            m_scopes.pop_back();
+            m_codes.pop_back();
+
+            encode_instruction(Opcode::push_global, global_lambda_id);
 
             return true;
         }
@@ -283,6 +400,8 @@ namespace pie{
                 return emit_assignment(*expr_assign);
             } else if (auto expr_call = std::get_if<const expr::Call*>(&expr_variant); expr_call) {
                 return emit_call(*expr_call);
+            } else if (auto expr_closure = std::get_if<const expr::Closure*>(&expr_variant); expr_closure) {
+                return emit_closure(*expr_closure);
             } else {
                 std::println(std::cerr, "Compile error at emit_expr(): unknown expression type!");
                 return false;
@@ -312,7 +431,6 @@ namespace pie{
                 expr_pos++;
             }
 
-            encode_instruction(Opcode::end_env);
             encode_instruction(Opcode::ret);
 
             return Program {

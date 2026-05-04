@@ -102,6 +102,7 @@ namespace pie {
             [[nodiscard]] std::optional<SymbolInfo> lookup_global(const std::string& symbol);
             [[nodiscard]] std::optional<SymbolInfo> lookup_local(const std::string& symbol);
             [[nodiscard]] std::optional<SymbolInfo> lookup_constant(const std::string& symbol);
+            [[nodiscard]] const std::string* lookup_external_name_ptr(const std::string& symbol);
 
             //? NOTE: Use this for recording builtin names, allowing the compiler to understand those symbols in name -> location resolution.
             [[nodiscard]] std::optional<SymbolInfo> record_global(const std::string& symbol, std::unique_ptr<ObjectBase> object_ptr) noexcept;
@@ -128,7 +129,11 @@ namespace pie {
             [[nodiscard]] bool emit_assignment(const expr::Assignment* expr);
             [[nodiscard]] bool emit_match(const expr::Match* expr);
             [[nodiscard]] bool emit_block(const expr::Block* expr);
+            //? DrkWithT: I've made conditional not a normal builtin since it emits directly to an instruction sequence using JUMP_ELSE and JUMP. This avoids eager evaluation of true and false "args".
+            [[nodiscard]] bool help_emit_conditional(const expr::ExprPtr& check_arg, const expr::ExprPtr& yes, const expr::ExprPtr& no);
+
             [[nodiscard]] bool emit_call(const expr::Call* expr);
+            [[nodiscard]] bool emit_closure(const expr::Closure* expr);
 
             [[nodiscard]] bool emit_expr(const expr::ExprPtr& any_expr);
 
@@ -139,7 +144,7 @@ namespace pie {
                 .name = "(top-level)",
                 .next_constant_id = 0,
                 .next_ident_key_id = 0
-            }}, m_scopes {}, m_globals (128), m_codes {}, m_within_call {false}, m_within_lhs {false}, m_within_rhs {false} {
+            }}, m_scopes {}, m_globals {}, m_codes {}, m_within_call {false}, m_within_lhs {false}, m_within_rhs {false} {
                 m_scopes.emplace_back(SymbolScope {
                     .symbols = {},
                     .name = "(top-level)",

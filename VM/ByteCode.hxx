@@ -22,6 +22,7 @@ namespace pie{
             ref_env,
             bind,   // ? stores the top stack value into an environment entry via immediate string ID / ptr.
             lookup, // ? looks up an environment-associated value via immediate string ID / ptr.
+            lookup_by_const,
             deref,
             
             // * Begin stack ops
@@ -59,6 +60,7 @@ namespace pie{
                     "ref_env",
                     "bind",
                     "lookup",
+                    "lookup_by_const",
                     "deref",
                     "push_global",
                     "push_const",
@@ -110,7 +112,15 @@ namespace pie{
                 const auto& [main_chunk, all_globals] = p;
                 
                 std::println("\x1b[1;33m---- BYTECODE DUMP ----\x1b[0m\n\n");
-                
+
+                std::println("\x1b[1;33m--- GLOBALS DUMP ---\x1b[0m\n");
+
+                for (int object_id = 0, object_count = all_globals.size(); object_id < object_count; object_id++) {
+                    if (const auto& object_ptr = all_globals.at(object_id); object_ptr) {
+                        std::println("GLOBAL {} = {}\n", object_id, object_ptr->to_string());
+                    }
+                }
+
                 // ? display bytecode for top-level statements
                 display_chunk_data(main_chunk, 0);
             }

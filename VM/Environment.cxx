@@ -12,6 +12,10 @@ namespace pie {
             return m_super;
         }
 
+        void Environment::set_super(ObjectBase* p) noexcept {
+            m_super = p;
+        }
+
         [[nodiscard]] const FastValue* Environment::resolve() const {
             return nullptr;
         }
@@ -20,7 +24,7 @@ namespace pie {
             return nullptr;
         }
 
-        [[nodiscard]] bool Environment::call(std::any state_ref, int arg_count) {
+        [[nodiscard]] bool Environment::call([[maybe_unused]] std::any state_ref, [[maybe_unused]] int arg_count) {
             return false;
         }
 
@@ -28,27 +32,27 @@ namespace pie {
             return {};
         }
 
-        [[nodiscard]] FastValue Environment::pow(const FastValue& rhs) {
+        [[nodiscard]] FastValue Environment::pow([[maybe_unused]] const FastValue& rhs) {
             return {};
         }
 
-        [[nodiscard]] FastValue Environment::mul(const FastValue& rhs) {
+        [[nodiscard]] FastValue Environment::mul([[maybe_unused]] const FastValue& rhs) {
             return {};
         }
 
-        [[nodiscard]] FastValue Environment::div(const FastValue& rhs) {
+        [[nodiscard]] FastValue Environment::div([[maybe_unused]] const FastValue& rhs) {
             return {};
         }
 
-        [[nodiscard]] FastValue Environment::mod(const FastValue& rhs) {
+        [[nodiscard]] FastValue Environment::mod([[maybe_unused]] const FastValue& rhs) {
             return {};
         }
 
-        [[nodiscard]] FastValue Environment::add(const FastValue& rhs) {
+        [[nodiscard]] FastValue Environment::add([[maybe_unused]] const FastValue& rhs) {
             return {};
         }
 
-        [[nodiscard]] FastValue Environment::sub(const FastValue& rhs) {
+        [[nodiscard]] FastValue Environment::sub([[maybe_unused]] const FastValue& rhs) {
             return {};
         }
 
@@ -75,25 +79,25 @@ namespace pie {
             return reinterpret_cast<const void*>(this) == std::addressof(rhs);
         }
 
-        [[nodiscard]] bool Environment::cmp_gt(const FastValue& rhs) const {
+        [[nodiscard]] bool Environment::cmp_gt([[maybe_unused]] const FastValue& rhs) const {
             return false;
         }
 
-        [[nodiscard]] bool Environment::cmp_geq(const FastValue& rhs) const {
+        [[nodiscard]] bool Environment::cmp_geq([[maybe_unused]] const FastValue& rhs) const {
             return false;
         }
 
-        [[nodiscard]] bool Environment::cmp_lt(const FastValue& rhs) const {
+        [[nodiscard]] bool Environment::cmp_lt([[maybe_unused]] const FastValue& rhs) const {
             return false;
         }
 
-        [[nodiscard]] bool Environment::cmp_leq(const FastValue& rhs) const {
+        [[nodiscard]] bool Environment::cmp_leq([[maybe_unused]] const FastValue& rhs) const {
             return false;
         }
 
         [[nodiscard]] FastValue Environment::get_item(const FastValue& key, ContainerPolicy policy) const {
             // TODO: handle access policy to account for indexing too.
-            if (policy == ContainerPolicy::key && m_data.contains(key.as_str_ptr())) {
+            if ((policy == ContainerPolicy::chase || policy == ContainerPolicy::key) && m_data.contains(key.as_str_ptr())) {
                 return m_data.at(key.as_str_ptr());
             } else if (policy == ContainerPolicy::chase && m_super != nullptr) {
                 return m_super->get_item(key, policy);

@@ -27,6 +27,8 @@ namespace pie {
 
             [[nodiscard]] ObjectBase* get_super() noexcept override;
 
+            void set_super(ObjectBase* p) noexcept override;
+
             [[nodiscard]] const FastValue* resolve() const override;
 
             [[nodiscard]] FastValue* resolve() override;

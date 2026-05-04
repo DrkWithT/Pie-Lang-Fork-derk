@@ -67,6 +67,7 @@ namespace pie {
 
             virtual std::string get_typename( ) const = 0;
             virtual ObjectBase* get_super() noexcept = 0;
+            virtual void set_super(ObjectBase* p) noexcept = 0;
 
             //? Use this for resolving original values behind references / accessing data in Any values e.g `x: Any = 1234, x = {1, 2, 3, 4};`
             virtual const FastValue* resolve( ) const = 0; //? non-mutating overload here
@@ -148,8 +149,8 @@ namespace pie {
             }
 
             const std::string* as_str_ptr() const noexcept {
-                if (auto temp = std::get_if<const std::string*>(&m_data); temp != nullptr) {
-                    return *temp;
+                if (const auto self_tag = tag(); self_tag == FastValueTag::string_ref) {
+                    return std::get<const std::string*>(m_data);
                 }
 
                 return nullptr;
@@ -465,7 +466,7 @@ namespace pie {
 
                 switch (self_tag) {
                 case FastValueTag::num_boolean: return test() > real_rhs_v.test();
-                case FastValueTag::num_double: return to_string() > real_rhs_v.to_string();
+                case FastValueTag::num_double: return std::get<double>(m_data) > std::get<double>(real_rhs_v.m_data);
                 case FastValueTag::num_bigint: return to_int() > real_rhs_v.to_int();
                 case FastValueTag::value_ref: return resolve().cmp_gt(real_rhs_v);
                 case FastValueTag::object_ref: return std::get<ObjectBase*>(m_data)->cmp_gt(real_rhs_v);
@@ -484,7 +485,7 @@ namespace pie {
 
                 switch (self_tag) {
                 case FastValueTag::num_boolean: return test() >= real_rhs_v.test();
-                case FastValueTag::num_double: return to_string() >= real_rhs_v.to_string();
+                case FastValueTag::num_double: return std::get<double>(m_data) >= std::get<double>(real_rhs_v.m_data);
                 case FastValueTag::num_bigint: return to_int() >= real_rhs_v.to_int();
                 case FastValueTag::value_ref: return resolve().cmp_geq(real_rhs_v);
                 case FastValueTag::object_ref: return std::get<ObjectBase*>(m_data)->cmp_geq(real_rhs_v);
@@ -503,7 +504,7 @@ namespace pie {
 
                 switch (self_tag) {
                 case FastValueTag::num_boolean: return test() < real_rhs_v.test();
-                case FastValueTag::num_double: return to_string() < real_rhs_v.to_string();
+                case FastValueTag::num_double: return std::get<double>(m_data) < std::get<double>(real_rhs_v.m_data);
                 case FastValueTag::num_bigint: return to_int() < real_rhs_v.to_int();
                 case FastValueTag::value_ref: return resolve().cmp_lt(real_rhs_v);
                 case FastValueTag::object_ref: return std::get<ObjectBase*>(m_data)->cmp_lt(real_rhs_v);
@@ -522,7 +523,7 @@ namespace pie {
 
                 switch (self_tag) {
                 case FastValueTag::num_boolean: return test() <= real_rhs_v.test();
-                case FastValueTag::num_double: return to_string() <= real_rhs_v.to_string();
+                case FastValueTag::num_double: return std::get<double>(m_data) <= std::get<double>(real_rhs_v.m_data);
                 case FastValueTag::num_bigint: return to_int() <= real_rhs_v.to_int();
                 case FastValueTag::value_ref: return resolve().cmp_leq(real_rhs_v);
                 case FastValueTag::object_ref: return std::get<ObjectBase*>(m_data)->cmp_lt(real_rhs_v);

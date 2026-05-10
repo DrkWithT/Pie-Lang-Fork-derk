@@ -2,17 +2,11 @@
 
 #include "Token.hxx"
 #include "../Utils/utils.hxx"
-#include "../Parser/Precedence.hxx"
 
 #include <cctype>
 #include <string>
-#include <sstream>
 #include <string_view>
 #include <vector>
-#include <fstream>
-#include <tuple>
-#include <unordered_map>
-#include <algorithm>
 
 
 inline namespace pie {
@@ -21,7 +15,7 @@ inline namespace lex {
 
 inline TokenKind keyword(const std::string_view word) noexcept {
     using enum TokenKind;
-         if (word == "mixfix") return MIXFIX;
+    if (word == "mixfix") return MIXFIX;
     else if (word == "prefix") return PREFIX;
     else if (word == "infix" ) return INFIX ;
     else if (word == "suffix") return SUFFIX;
@@ -237,6 +231,8 @@ inline bool validNameChar(const char c) noexcept {
                 lines.back().push_back({SEMI, {src[index]}});
                 lines.push_back({});
                 break;
+
+            case '`': lines.back().push_back({BACKTICK, {src[index]}}); break;
 
             // case '\n': lines.back().clear(); break;
             case '\n':

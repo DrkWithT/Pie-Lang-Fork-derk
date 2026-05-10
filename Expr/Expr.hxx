@@ -801,6 +801,25 @@ struct SpaceAccess : Expr {
 };
 
 
+struct Syntax : Expr {
+    ExprPtr expr;
+    Syntax(ExprPtr e) noexcept : expr{std::move(e)} {}
+
+    std::string stringify(const size_t indent = 0) const override {
+        return '`' + expr->stringify(indent + 4) + '`';
+    }
+
+    bool involvesName(const std::string_view sv) const override {
+        return sv == stringify() or expr->involvesName(sv);
+    }
+
+    ExprPtr left() const override { return std::make_shared<Syntax>(*this); }
+
+    Node variant() override { return this; }
+};
+
+
+
 // Only reason this is needed is to distinguish between expressions like
 // 1 + 2 and (1 + 2)
 // since they could get assigned 2 different values

@@ -12,6 +12,7 @@ enum class TokenKind {
     FAT_ARROW,
 
     COMMA,
+    BACKTICK,
     DOT,
     CASCADE, // for future support
     ELLIPSIS,
@@ -69,6 +70,7 @@ constexpr const char* stringify(const TokenKind token) noexcept {
         case L_PAREN :      return "L_PAREN";
         case R_PAREN :      return "R_PAREN";
         case COMMA   :      return "COMMA";
+        case BACKTICK:      return "BACKTICK";
         case CASCADE :      return "CASCADE";
         case ELLIPSIS:      return "ELLIPSIS";
         case DOT     :      return "DOT";

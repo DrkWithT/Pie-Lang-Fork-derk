@@ -716,6 +716,16 @@ struct LexicalAnalysis {
     };
 
 
+    void operator()(expr::Syntax *syn) {
+        if (auto id = findVar(syn->stringify())) {
+            syn->ID = *id;
+            return;
+        }
+
+        std::visit(*this, syn->expr->variant());
+    }
+
+
     void operator()(expr::Type *type) {
         if (auto id = findVar(type->stringify())) {
             type->ID = *id;

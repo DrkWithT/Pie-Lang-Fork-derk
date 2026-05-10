@@ -796,6 +796,7 @@ make
 - [ ] Make `=` and `=>` overloadable
 - [ ] Fix builtin reset (value-reset, reset/name-reset) 
 - [ ] World domination
+- [ ] Cascade operator `..`
 - [ ] Move from Make to Bake
 - [ ] Improve error messages (add line and column numbers)
 - [ ] Add recursive operators
@@ -860,7 +861,6 @@ make
 - ~~Add iterators~~
 - ~~Add looping~~
 - ~~Add method operators..?~~
-- ~~Cascade operator `..`~~
 
 
 ## Community

@@ -1173,6 +1173,14 @@ struct Visitor {
     }
 
 
+    Value operator()(const expr::Syntax *syn) {
+        if (const auto& var = getVar(syn->ID); var) return var->first;
+
+        // return std::visit(*this, syn->expr->variant());
+        return syn->expr->variant();
+    }
+
+
     Value operator()(const expr::Type* type) {
         if (const auto& var = getVar(type->ID); var) return var->first;
 
@@ -3645,7 +3653,7 @@ struct Visitor {
 
     type::TypePtr typeOf(const Value& value) const {
         if (std::holds_alternative<expr::Node > (value)) return type::builtins::Syntax();
-        if (std::holds_alternative<BigInt    > (value)) return type::builtins::Int();
+        if (std::holds_alternative<BigInt     > (value)) return type::builtins::Int();
         if (std::holds_alternative<double     > (value)) return type::builtins::Double();
         if (std::holds_alternative<bool       > (value)) return type::builtins::Bool();
         if (std::holds_alternative<std::string> (value)) return type::builtins::String();

@@ -187,140 +187,12 @@ public:
                 return fixOperator(std::move(token));
 
             // block (scope) or list literal or map literal
-            case L_BRACE: {
-                if (match(R_BRACE)) return std::make_shared<expr::List>();
-
-                if (match(COLON)) {
-                    consume(R_BRACE);
-                    return std::make_shared<expr::Map>();
-                }
-
-                const bool map_expr = [this] {
-
-                    for (size_t i{}; /* not atEnd(i) */ ; ++i) {
-                        // if you find a colon first, then
-                        // it could be a map {x: y};
-                        // OR it could be a declaration {x: y = 1;};
-                        // must find an assignment to make sure...
-
-                        // { (name1: Int = name3): name4 }
-                        // { name1: Int = name3 }
-                        if (check(COLON, i)) {
-                            for (size_t a = i + 1; /* not atEnd(a) */; ++a) {
-                                if (check(COMMA  , a)) return true ; // onto next element, it's a map
-                                if (check(R_BRACE, a)) return true ; // closed the map, it's a map
-                                if (check(COLON  , a)) return true ; // this time the colon indicates a declaration {n1: n2: n3 = 4};
-                                if (check(SEMI   , a)) return false; // proly a declaration, it's a scope..i think :c
-
-                                if (check(L_BRACE, a)) while (not check(R_BRACE, a)) ++a;
-                                if (check(L_PAREN, a)) while (not check(R_PAREN, a)) ++a;
-                            }
-                        }
-
-                        if (check(COMMA  , i)) return false; // if you find a comma first, it's a list {1, 2};
-                        if (check(R_BRACE, i)) return false; // finding a `}` before finding `:` means it's a list with potentially one element
-                        if (check(SEMI   , i)) return false; // finding a `;` means it's a scope, and that was the end of an expression...
-
-                        if (check(L_BRACE, i)) while (not check(R_BRACE, i)) ++i;
-                        if (check(L_PAREN, i)) while (not check(R_PAREN, i)) ++i;
-                    }
-
-                    return false; // argubaly, should be `error()`
-                }();
-
-                if (map_expr) {
-
-                    auto key = parseExpr<false, Context::MAP>();
-                    consume(COLON);
-                    std::vector<std::pair<expr::ExprPtr, expr::ExprPtr>> exprs = { {std::move(key), parseExpr(), }, };
-                    // std::unordered_map<expr::ExprPtr, expr::ExprPtr> exprs = { {parseExpr<false>(), parseExpr(), }, };
-
-                    while (match(COMMA)) {
-                        key = parseExpr<false, Context::MAP>();
-                        consume(COLON);
-                        exprs.push_back({ std::move(key), parseExpr(), });
-
-                        // auto key = parseExpr<false>();
-                        // exprs[std::move(key)] = parseExpr();
-                        // exprs.insert_or_assign(std::move(key), parseExpr());?
-                    }
-
-                    consume(R_BRACE);
-
-                    return std::make_shared<expr::Map>(std::move(exprs));
-                }
-
-                std::vector<expr::ExprPtr> exprs = { parseExpr(), };
-
-                if (match(SEMI)) { // scope
-                    while(not match(R_BRACE)) {
-                        exprs.emplace_back(parseExpr());
-                        consume(SEMI);
-                    }
-                    return std::make_shared<expr::Block>(std::move(exprs));
-                }
-                else { // list literals
-                    while (match(COMMA)) exprs.emplace_back(parseExpr()); 
-
-                    consume(R_BRACE);
-
-                    return std::make_shared<expr::List>(std::move(exprs));
-                }
-
-                util::error();
-            }
+            case L_BRACE : return LBrace();
 
             // either a grouping or a closure - (or a closure type)
-            case L_PAREN: {
-                if (match(R_PAREN)) { // nullary closure
-                    type::TypePtr return_type = match(COLON) ? parseType() : type::builtins::_();
+            case L_PAREN : return LParen<PARSE_TYPE, CTX>();
 
-                    consume(FAT_ARROW);
-                    // It's a closure
-                    auto body = parseExpr<PARSE_TYPE>();
-                    return std::make_shared<expr::Closure>(std::vector<std::string>{}, std::move(body), type::FuncType{{}, std::move(return_type)});
-                }
-
-                // todo: fix this algorithm
-                const bool fold_expr = [this] {
-                    for (size_t i{}; /* not atEnd(i) */; ++i) {
-                        if (check(R_PAREN , i)) return false;
-                        if (check(COLON   , i)) return false;
-                        if (check(ELLIPSIS, i)) return true ;
-
-
-                        if (check(L_BRACE, i)) while (not check(R_BRACE, i)) ++i;
-                        if (check(L_PAREN, i)) while (not check(R_PAREN, i)) ++i;
-                    }
-                    return false;
-                }();
-
-                if (fold_expr) return parseFoldExpr();
-
-                // auto exprs = parseCommaList();
-
-
-                const bool closure_expr = [this] {
-                    size_t i{};
-                    for (; /* not atEnd(i) and */ not check(R_PAREN , i); ++i) {
-                        if (check(L_BRACE, i)) while (not check(R_BRACE, i)) ++i;
-                        if (check(L_PAREN, i)) while (not check(R_PAREN, i)) ++i;
-                    }
-                    ++i;
-
-                    return (CTX != Context::MAP and check(COLON, i)) or check(FAT_ARROW, i); // ( ... ): OR ( ... ) =>
-                }();
-
-
-                if (closure_expr) return closure();
-
-
-                // just a grouping `(x)`
-                auto expr = parseExpr();
-                consume(R_PAREN);
-                return std::make_shared<expr::Grouping>(std::move(expr));
-                // return expr;
-            }
+            case BACKTICK: return backticks(); 
 
 
             default:
@@ -917,6 +789,152 @@ public:
         }
 
         return std::make_shared<expr::Call>(std::move(left), std::move(named_args), std::move(args));
+    }
+
+
+    expr::ExprPtr LBrace() {
+        using enum TokenKind;
+
+        if (match(R_BRACE)) return std::make_shared<expr::List>();
+
+        if (match(COLON)) {
+            consume(R_BRACE);
+            return std::make_shared<expr::Map>();
+        }
+
+        const bool map_expr = [this] {
+
+            for (size_t i{}; /* not atEnd(i) */ ; ++i) {
+                // if you find a colon first, then
+                // it could be a map {x: y};
+                // OR it could be a declaration {x: y = 1;};
+                // must find an assignment to make sure...
+
+                // { (name1: Int = name3): name4 }
+                // { name1: Int = name3 }
+                if (check(COLON, i)) {
+                    for (size_t a = i + 1; /* not atEnd(a) */; ++a) {
+                        if (check(COMMA  , a)) return true ; // onto next element, it's a map
+                        if (check(R_BRACE, a)) return true ; // closed the map, it's a map
+                        if (check(COLON  , a)) return true ; // this time the colon indicates a declaration {n1: n2: n3 = 4};
+                        if (check(SEMI   , a)) return false; // proly a declaration, it's a scope..i think :c
+
+                        if (check(L_BRACE, a)) while (not check(R_BRACE, a)) ++a;
+                        if (check(L_PAREN, a)) while (not check(R_PAREN, a)) ++a;
+                    }
+                }
+
+                if (check(COMMA  , i)) return false; // if you find a comma first, it's a list {1, 2};
+                if (check(R_BRACE, i)) return false; // finding a `}` before finding `:` means it's a list with potentially one element
+                if (check(SEMI   , i)) return false; // finding a `;` means it's a scope, and that was the end of an expression...
+
+                if (check(L_BRACE, i)) while (not check(R_BRACE, i)) ++i;
+                if (check(L_PAREN, i)) while (not check(R_PAREN, i)) ++i;
+            }
+
+            return false; // argubaly, should be `error()`
+        }();
+
+        if (map_expr) {
+
+            auto key = parseExpr<false, Context::MAP>();
+            consume(COLON);
+            std::vector<std::pair<expr::ExprPtr, expr::ExprPtr>> exprs = { {std::move(key), parseExpr(), }, };
+            // std::unordered_map<expr::ExprPtr, expr::ExprPtr> exprs = { {parseExpr<false>(), parseExpr(), }, };
+
+            while (match(COMMA)) {
+                key = parseExpr<false, Context::MAP>();
+                consume(COLON);
+                exprs.push_back({ std::move(key), parseExpr(), });
+
+                // auto key = parseExpr<false>();
+                // exprs[std::move(key)] = parseExpr();
+                // exprs.insert_or_assign(std::move(key), parseExpr());?
+            }
+
+            consume(R_BRACE);
+
+            return std::make_shared<expr::Map>(std::move(exprs));
+        }
+
+        std::vector<expr::ExprPtr> exprs = { parseExpr(), };
+
+        if (match(SEMI)) { // scope
+            while(not match(R_BRACE)) {
+                exprs.emplace_back(parseExpr());
+                consume(SEMI);
+            }
+            return std::make_shared<expr::Block>(std::move(exprs));
+        }
+        else { // list literals
+            while (match(COMMA)) exprs.emplace_back(parseExpr()); 
+
+            consume(R_BRACE);
+
+            return std::make_shared<expr::List>(std::move(exprs));
+        }
+
+        util::error();
+    }
+
+
+    template <bool PARSE_TYPE = true, Context CTX>
+    expr::ExprPtr LParen() {
+        using enum TokenKind;
+
+        if (match(R_PAREN)) { // nullary closure
+            type::TypePtr return_type = match(COLON) ? parseType() : type::builtins::_();
+
+            consume(FAT_ARROW);
+            // It's a closure
+            auto body = parseExpr<PARSE_TYPE>();
+            return std::make_shared<expr::Closure>(std::vector<std::string>{}, std::move(body), type::FuncType{{}, std::move(return_type)});
+        }
+
+        // todo: fix this algorithm
+        const bool fold_expr = [this] {
+            for (size_t i{}; /* not atEnd(i) */; ++i) {
+                if (check(R_PAREN , i)) return false;
+                if (check(COLON   , i)) return false;
+                if (check(ELLIPSIS, i)) return true ;
+
+
+                if (check(L_BRACE, i)) while (not check(R_BRACE, i)) ++i;
+                if (check(L_PAREN, i)) while (not check(R_PAREN, i)) ++i;
+            }
+            return false;
+        }();
+
+        if (fold_expr) return parseFoldExpr();
+
+        // auto exprs = parseCommaList();
+
+
+        const bool closure_expr = [this] {
+            size_t i{};
+            for (; /* not atEnd(i) and */ not check(R_PAREN , i); ++i) {
+                if (check(L_BRACE, i)) while (not check(R_BRACE, i)) ++i;
+                if (check(L_PAREN, i)) while (not check(R_PAREN, i)) ++i;
+            }
+            ++i;
+
+            return (CTX != Context::MAP and check(COLON, i)) or check(FAT_ARROW, i); // ( ... ): OR ( ... ) =>
+        }();
+
+
+        if (closure_expr) return closure();
+
+
+        // just a grouping `(x)`
+        util::Deferred d{[this] { consume(R_PAREN); }};
+        return std::make_shared<expr::Grouping>(parseExpr());
+        // return expr;
+    }
+
+
+    expr::ExprPtr backticks() {
+        util::Deferred d{[this] { consume(TokenKind::BACKTICK); }};
+        return std::make_shared<expr::Syntax>(parseExpr());
     }
 
 

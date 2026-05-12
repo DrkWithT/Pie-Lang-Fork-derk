@@ -29,7 +29,7 @@ class Parser {
     typename Tokens::iterator token_iterator;
 
     // statically known things:
-    Operators ops;
+    std::vector<Operators> op_env;
     std::vector<std::string> namespaces;
 
     // deque instead of vector for pop_front
@@ -45,26 +45,56 @@ class Parser {
         CALL,
     };
 
+
+
+    bool opsContain(const std::string& op) const {
+        for (const auto& ops : op_env)
+            if (ops.contains(op)) return true;
+
+        return false;
+    }
+
+    const std::unique_ptr<expr::Fix>& findOp(const std::string& op) const {
+        for (const auto& ops : std::views::reverse(op_env)) {
+            if (ops.contains(op)) return ops.at(op);
+        }
+
+        // util::error("Operator `" + op + "` not found!");
+        util::error();
+    }
+
+
+    Operators consolidateOps() const {
+        Operators consolidated;
+        for (const auto& operators : op_env) {
+            for (const auto& [name, op] : operators) {
+                consolidated[name] = op->clone();
+            }
+        }
+
+        return consolidated;
+    }
+
 public:
 
     Parser(Tokens t, std::filesystem::path r = ".") noexcept
-    : tokens{std::move(t)}, token_iterator{tokens.begin()}, root{r.remove_filename()}
+    : tokens{std::move(t)}, token_iterator{tokens.begin()}, op_env(1), root{r.remove_filename()}
     {}
 
 
-    explicit Parser(std::filesystem::path r) noexcept : root{r.remove_filename()} {}
+    explicit Parser(std::filesystem::path r) noexcept : op_env(1), root{r.remove_filename()} {}
 
 
     [[nodiscard]] bool atEnd(size_t offset = 0) const noexcept { return std::next(token_iterator, offset) == tokens.end() or std::next(token_iterator, offset)->kind == TokenKind::END; }
 
 
-    std::pair<std::vector<expr::ExprPtr>, Operators> parse(Tokens t = {}) {
-        if (not t.empty()) {
-            tokens = std::move(t);
-            token_iterator = tokens.begin();
-            red.clear();
-        }
+    void resetTokens(Tokens t) {
+        tokens = std::move(t);
+        token_iterator = tokens.begin();
+        red.clear();
+    }
 
+    std::vector<expr::ExprPtr> parse() {
         std::vector<expr::ExprPtr> expressions;
 
         while (not atEnd()) {
@@ -85,10 +115,10 @@ public:
         }
 
 
-        Operators os;
-        for (const auto& [name, op] : ops) os[name] = op->clone();
+        // Operators os;
+        // for (const auto& [name, op] : ops) os[name] = op->clone();
 
-        return {expressions, std::move(os)};
+        return expressions;
     }
 
     template <bool PARSE_TYPE = true, Context CTX = Context::NONE>
@@ -295,6 +325,9 @@ public:
 
         if (match(ELLIPSIS)) {
             if constexpr (not ALLOW_VARIADIC) util::error("Can't have a variadic of a variadic type!");
+
+            if (check(COMMA) or check(R_PAREN) or check(ASSIGN))
+                return std::make_shared<type::VariadicType>(type::builtins::Any());
 
             return std::make_shared<type::VariadicType>(parseType<false>());
         }
@@ -605,8 +638,8 @@ public:
 
 
         std::string op = consume().text;
-        if (not ops.contains(op))                util::error("Folding over unknown operator: " + op);
-        if (ops[op]->type() != TokenKind::INFIX) util::error("Folding over non-infix operator: " + op);
+        if (not opsContain(op))                     util::error("Folding over unknown ""operator: " + op);
+        if (findOp(op)->type() != TokenKind::INFIX) util::error("Folding over non-infix operator: " + op);
 
 
         if (match(ELLIPSIS)) {
@@ -659,8 +692,8 @@ public:
         constexpr auto is_left_to_right = false;
 
         std::string op = consume().text;
-        if (not ops.contains(op))                util::error("Folding over unknown operator: " + op);
-        if (ops[op]->type() != TokenKind::INFIX) util::error("Folding over non-infix operator: " + op);
+        if (not opsContain(op))                     util::error("Folding over unknown operator: " + op);
+        if (findOp(op)->type() != TokenKind::INFIX) util::error("Folding over non-infix operator: " + op);
 
         auto pack = parseExpr(prec::HIGH_VALUE);
 
@@ -741,7 +774,10 @@ public:
 
         consume(FAT_ARROW);
 
+        scope();
         auto body = parseExpr();
+        unscope();
+
         return std::make_shared<expr::Closure>(
             std::move(params), std::move(body), type::FuncType{std::move(params_types), std::move(return_type)}
         );
@@ -857,6 +893,7 @@ public:
             return std::make_shared<expr::Map>(std::move(exprs));
         }
 
+        scope();
         std::vector<expr::ExprPtr> exprs = { parseExpr(), };
 
         if (match(SEMI)) { // scope
@@ -864,9 +901,16 @@ public:
                 exprs.emplace_back(parseExpr());
                 consume(SEMI);
             }
+
+            unscope();
             return std::make_shared<expr::Block>(std::move(exprs));
         }
         else { // list literals
+            for (auto& [name, op] : op_env.back()) 
+                op_env[op_env.size() - 2][name] = std::move(op);
+
+            unscope();
+
             while (match(COMMA)) exprs.emplace_back(parseExpr()); 
 
             consume(R_BRACE);
@@ -926,8 +970,9 @@ public:
 
 
         // just a grouping `(x)`
-        util::Deferred d{[this] { consume(R_PAREN); }};
-        return std::make_shared<expr::Grouping>(parseExpr());
+        const auto expr = std::make_shared<expr::Grouping>(parseExpr());
+        consume(R_PAREN);
+        return expr;
         // return expr;
     }
 
@@ -939,7 +984,7 @@ public:
 
 
     expr::ExprPtr prefixName(Token token) {
-        if (ops.contains(token.text)) return parseOperator(std::move(token));
+        if (opsContain(token.text)) return parseOperator(std::move(token));
 
 
         if (match(TokenKind::COLON)){ // exprs preceeded by `:` are parsed as type
@@ -961,12 +1006,13 @@ public:
 
 
     expr::ExprPtr infixName(expr::ExprPtr left, Token token) {
-        if (ops.contains(token.text)) {
-            switch (const auto& op = ops[token.text]; op->type()) {
+        if (opsContain(token.text)) {
+            switch (const auto& op = findOp(token.text); op->type()) {
                 // case TokenKind::PREFIX:
                 //     return std::make_shared<UnaryOp>(token, parseExpr(precFromToken(op->prec)));
+
                 case TokenKind::INFIX: {
-                    const auto prec = prec::calculate(op->high, op->low, ops);
+                    const auto prec = prec::calculate(op->high, op->low, consolidateOps());
                     return std::make_shared<expr::BinOp>(std::move(left), std::move(token).text, parseExpr(prec));
                 }
                 case TokenKind::SUFFIX:
@@ -975,7 +1021,7 @@ public:
 
                 //* I can fix this. Check if the name is the first or not and error accordingly!
                 case TokenKind::EXFIX: {
-                    const auto& op = dynamic_cast<const expr::Exfix*>(ops[token.text].get());
+                    const auto& op = dynamic_cast<const expr::Exfix*>(findOp(token.text).get());
                     if (token.text != op->name2) util::error("Open exfix operator found where closing one was expected!");
 
                     return left;
@@ -984,7 +1030,7 @@ public:
 
                 // some other part of Operator. 
                 case TokenKind::MIXFIX: {
-                    const auto& op = dynamic_cast<const expr::Operator*>(ops[token.text].get());
+                    const auto& op = dynamic_cast<const expr::Operator*>(findOp(token.text).get());
 
                     // error("Beginning operator '" + token.text  + "' found where it shouldn't be!");
                     // in the middle of parsing a OpCall. Do nothing.
@@ -995,7 +1041,7 @@ public:
                     // if (op->begin_expr) error("Operator '" + op->name + " ...' has to come after a name!");
 
 
-                    const int prec = prec::calculate(op->high, op->low, ops);
+                    const int prec = prec::calculate(op->high, op->low, consolidateOps());
 
                     std::vector<expr::ExprPtr> exprs = {std::move(left)};
 
@@ -1021,14 +1067,14 @@ public:
     }
 
     expr::ExprPtr parseOperator(Token token) {
-        switch (const auto& op = ops[token.text]; op->type()) {
+        switch (const auto& op = findOp(token.text); op->type()) {
             case TokenKind::PREFIX:{
-                const int prec = prec::calculate(op->high, op->low, ops);
+                const int prec = prec::calculate(op->high, op->low, consolidateOps());
                 return std::make_shared<expr::UnaryOp>(std::move(token).text, parseExpr(prec));
             }
 
             case TokenKind::EXFIX:{
-                const auto& op = dynamic_cast<const expr::Exfix*>(ops[token.text].get());
+                const auto& op = dynamic_cast<const expr::Exfix*>(findOp(token.text).get());
 
                 auto ret = std::make_shared<expr::CircumOp>(op->name, op->name2, parseExpr());
 
@@ -1038,10 +1084,10 @@ public:
             }
 
             case TokenKind::MIXFIX: {
-                const auto& op = dynamic_cast<const expr::Operator*>(ops[token.text].get());
+                const auto& op = dynamic_cast<const expr::Operator*>(findOp(token.text).get());
                 if (not op->op_pos[0]) util::error("Operator '" + token.text + "' has to come after an expression!");
 
-                const int prec = prec::calculate(op->high, op->low, ops);
+                const int prec = prec::calculate(op->high, op->low, consolidateOps());
 
                 std::vector<expr::ExprPtr> exprs;
                 for (size_t i{}; const auto& is_op : op->op_pos | std::views::drop(1)) {
@@ -1089,6 +1135,8 @@ public:
 
         int shift{};
         std::string name, low, high;
+        auto consolidated = consolidateOps();
+
 
         if (match(L_PAREN)) {
             low = consume().text;
@@ -1096,9 +1144,9 @@ public:
 
             shift = parseOperatorShift();
 
-            high = [shift, &low, this] {
-                if (shift > 0) return prec::higher(low, ops);
-                if (shift < 0) return std::exchange(low, prec::lower(low, ops));
+            high = [&consolidated, shift, &low] {
+                if (shift > 0) return prec::higher(low, consolidated);
+                if (shift < 0) return std::exchange(low, prec::lower(low, consolidated));
                 return low;
             }();
 
@@ -1112,7 +1160,7 @@ public:
 
 
         // technically I can report this error 2 lines earlier, but printing out the operator name could be very handy!
-        if (high == low and (prec::precedenceOf(high, ops) == prec::HIGH_VALUE or prec::precedenceOf(low, ops) == prec::LOW_VALUE))
+        if (high == low and (prec::precedenceOf(high, consolidated) == prec::HIGH_VALUE or prec::precedenceOf(low, consolidated) == prec::LOW_VALUE))
             util::error("Can't have set operator precedence to only LOW/HIGH: " + name);
 
 
@@ -1126,8 +1174,8 @@ public:
         // gotta dry out this part
         // plus, I don't like that I made "Fix" take a "ExprPtr" rather than closure but I'll leave it for now
 
-        if (ops.contains(name)) {
-            const auto& op = ops[name];
+        if (opsContain(name)) {
+            const auto& op = findOp(name);
             // op->funcs.push_back(std::move(func));
 
             if (op->type() != token.kind) {
@@ -1156,7 +1204,10 @@ public:
 
 
         // ops[name] = p.get();
-        if (not ops.contains(name)) ops[name] = p->clone();
+        if (not opsContain(name)) {
+            // ops[name] = p->clone();
+            op_env.back()[name] = p->clone();
+        }
 
         // pushing back after cloning so that the op table doesn't contain the closure
         p->funcs.push_back(std::move(func));
@@ -1183,8 +1234,8 @@ public:
         );
 
 
-        if (ops.contains(name1)) {
-            const auto& op = ops[name1];
+        if (opsContain(name1)) {
+            const auto& op = findOp(name1);
             // op->funcs.push_back(std::move(func));
 
             if (op->type() != TokenKind::EXFIX) {
@@ -1202,8 +1253,9 @@ public:
             return std::make_shared<expr::Exfix>(*ex);
         }
 
-        ops[name1] = p->clone();
-        ops[name2] = p->clone(); //* maybe? //* maybe not...? idk
+
+        op_env.back()[name1] = p->clone();
+        op_env.back()[name2] = p->clone(); //* maybe? //* maybe not...? idk
 
         // pushing back after cloning so that the op table doesn't contain the closure
         p->funcs.push_back(std::move(func));
@@ -1220,11 +1272,12 @@ public:
         fixPrecedence(low);
 
         const int shift = parseOperatorShift();
+        const auto consolidated = consolidateOps();
 
         // non-const so it's movable later
-        auto high = [shift, &low, this] {
-            if (shift > 0) return prec::higher(low, ops);
-            if (shift < 0) return std::exchange(low, prec::lower(low, ops));
+        auto high = [&consolidated, shift, &low] {
+            if (shift > 0) return prec::higher(low, consolidated);
+            if (shift < 0) return std::exchange(low, prec::lower(low, consolidated));
             return low;
         }();
 
@@ -1250,7 +1303,7 @@ public:
         std::vector<std::string> rest;
 
         while (not check(ASSIGN)) {
-                 if (match(SCOPE_RESOLVE)) op_pos.push_back(false), op_pos.push_back(false);
+            if      (match(SCOPE_RESOLVE)) op_pos.push_back(false), op_pos.push_back(false);
             else if (match(COLON))         op_pos.push_back(false);
             else                           op_pos.push_back(true );
 
@@ -1295,8 +1348,8 @@ public:
 
 
 
-        if (ops.contains(first)) {
-            const auto& op = ops[first];
+        if (opsContain(first)) {
+            const auto& op = findOp(first);
             // op->funcs.push_back(std::move(func));
 
             if (op->type() != TokenKind::MIXFIX) util::error(); // ! ADD ERR MSG
@@ -1315,8 +1368,9 @@ public:
             return std::make_shared<expr::Operator>(*arb);
         }
 
-        ops[p->name] = p->clone();
-        for (const auto& name : rest) ops[name] = p->clone();
+        op_env.back()[p->name] = p->clone();
+        // ops[p->name] = p->clone();
+        for (const auto& name : rest) op_env.back()[name] = p->clone();
 
         // push_back after clone on purpose. See other note
         p->funcs.push_back(std::move(func));
@@ -1428,14 +1482,14 @@ public:
             case NAME: {
                 // Probably in the middle of a mixfix() that takes 2 colons ': :' or more (2 expression arguments back to back)
                 // ex: mixfix(LOW +) if : : else : = (cond, thn, els) => ...;
-                if (not ops.contains(token.text)) {
+                if (not opsContain(token.text)) {
                     // log();
                     // error("Operator '" + token.text + "' not found!");
                     return 0;
                 }
 
-                const auto& op = ops[token.text];
-                const int prec = prec::calculate(op->high, op->low, ops);
+                const auto& op = findOp(token.text);
+                const int prec = prec::calculate(op->high, op->low, consolidateOps());
 
                 //todo: prefix sould also be right to left
                 // mix fix operators should be parsed right to left.......I think ;-;
@@ -1467,7 +1521,18 @@ public:
     }
 
 
-    const auto& operators() const noexcept { return ops; };
+    // const auto& operators() const noexcept { return ops; };
+
+    struct ScopeGuard {
+        Parser* p;
+         ScopeGuard(Parser* p) : p{p} { p->  scope(); }
+        ~ScopeGuard()                 { p->unscope(); }
+    };
+
+
+    void scope() { op_env.push_back({}); }
+    void unscope() { op_env.pop_back(); }
+
 };
 
 

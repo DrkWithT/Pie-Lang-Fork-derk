@@ -19,7 +19,7 @@ inline namespace value {
 }
 
 namespace interp {
-    struct Visitor;
+    class Visitor;
 }
 
 namespace type {

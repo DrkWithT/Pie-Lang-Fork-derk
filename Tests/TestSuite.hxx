@@ -7,7 +7,6 @@
 
 
 #include "../Lex/Lexer.hxx"
-#include "../Preprocessor/Preprocessor.hxx"
 #include "../Parser/Parser.hxx"
 #include "../Analysis/LexicalScoping.hxx"
 #include "../Interp/Interpreter.hxx"
@@ -69,7 +68,7 @@ struct Capture {
 
 
 
-std::string run(const char* src) {
+[[nodiscard]] inline std::string run(const char* src) {
 
     // auto processed_src = preprocess(src, ".");
     // Tokens v = lex(std::move(processed_src));
@@ -80,7 +79,7 @@ std::string run(const char* src) {
 
     Parser p{std::move(v)};
 
-    auto [exprs, ops] = p.parse();
+    auto exprs = p.parse();
 
 
     pie::analysis::LexicalAnalysis anal;
@@ -89,7 +88,7 @@ std::string run(const char* src) {
 
     Capture c{};
 
-    interp::Visitor visitor{std::move(ops)};
+    interp::Visitor visitor;
     for (const auto& expr : exprs)
         std::visit(visitor, expr->variant());
 

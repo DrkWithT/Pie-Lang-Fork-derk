@@ -25,28 +25,25 @@ print = __builtin_print;
 infix + = (a, b) => __builtin_add(a, b);
 infix - = (a, b) => __builtin_sub(a, b);
 
-mixfix(LOW +) if : then : else : = (cond, thn: Syntax, els: Syntax) =>
-    __builtin_eval(__builtin_conditional(cond, thn, els));
-
 infix > = (a, b) => __builtin_gt(a, b);
 infix < = (a, b) => __builtin_lt(a, b);
 
 
-xact = (f, g, r) => {
-    if g.k then {
+xact = (f, g, r) => __builtin_conditional(
+    g.k,
+    {
         g.k = f();
-        if (r > 0) then { xact(f, g, r - 1); } else {};
-    } else {};
-};
+        __builtin_conditional(r > 0, xact(f, g, r - 1), "");
+    },
+    ""
+);
 
 act = (f) => {
   xact(f, class{ k = true; }(), 5);
 };
 
 while = (c, f) => {
-    act(() => {
-        if c() then { f(); true; } else false;
-    });
+    act(() => __builtin_conditional(c(), { f(); true; }, false));
 };
 
 
@@ -78,27 +75,26 @@ print = __builtin_print;
 infix + = (a, b) => __builtin_add(a, b);
 infix - = (a, b) => __builtin_sub(a, b);
 
-mixfix(LOW +) if : then : else : = (cond, thn: Syntax, els: Syntax) =>
-    __builtin_eval(__builtin_conditional(cond, thn, els));
-
 infix > = (a, b) => __builtin_gt(a, b);
 infix < = (a, b) => __builtin_lt(a, b);
 
 
-xact = (f, g, r) => {
-    if g.k then {
+xact = (f, g, r) => __builtin_conditional(
+    g.k,
+    {
         g.k = f();
-        if (r > 0) then { xact(f, g, r - 1); } else {};
-    } else {};
+        __builtin_conditional(r > 0, xact(f, g, r - 1), "");
+    },
+    ""
+);
+
+act = (f) => {
+  xact(f, class{ k = true; }(), 5);
 };
 
-act = (f2) => {
-  xact(f2, class{ k = true; }(), 5);
-};
-
-while = (c, f3) => {
+while = (c, f) => {
     act(() => {
-        if c() then { f3(); true; } else false;
+        __builtin_conditional(c(), { f(); true; }, false);
     });
 };
 
@@ -753,59 +749,6 @@ print(add(g = 7, 1, c = 3, 2, 4, 5, f = 6, 1, "", 1.));
 
     REQUIRE_THROWS(pie::test::run(src));
 }
-
-
-
-// // I can't verify if this test case is right or not
-// // so comment it for now
-// TEST_CASE("Mutual Recursion", "[Func]") {
-//     const auto src = R"(
-// print = __builtin_print;
-
-// infix + = (a: Int, b: Int) => __builtin_add(a, b);
-// infix - = (a, b) => __builtin_sub(a, b);
-// infix < = (a, b) => __builtin_lt(a, b);
-// infix > = (a, b) => __builtin_gt(a, b);
-
-// mixfix(LOW +) if : then : else : = (cond: Bool, thn: Syntax, els: Syntax)
-//     => __builtin_eval(__builtin_conditional(cond, thn, els));
-
-// xact = (f1, g, r) => {
-//     if g.k then {
-//         g.k = f1();
-//         if (r > 0) then { xact(f1, g, r - 1); } else {};
-//         if (r > 0) then { xact(f1, g, r - 1); } else {};
-//     } else {};
-// };
-
-// act = (f2) => {
-//   xact(f2, class{ k = true; }(), 32);
-// };
-
-// while = (c, f) => {
-//     act(() => {
-//         if c() then { f(); true; } else false;
-//     });
-// };
-
-// x = 0;
-// while(() => x < 10, () => {
-//     x = x + 1;
-//     print(x);
-// });
-// )";
-
-//     REQUIRE(pie::test::run(src) == R"(1
-// 2
-// 3
-// 4
-// 5
-// 6
-// 7
-// 8
-// 9
-// 10)");
-// }
 
 
 

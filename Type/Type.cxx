@@ -46,14 +46,14 @@ namespace type {
         if (dynamic_cast<const TryReassign*>(&other)) return true;
 
         const auto type = text();
-        return type == "Syntax" or (type == "Any" and other.text() != "Any");
+        return type == "Any" and other.text() != "Any";
     }
 
     bool BuiltinType::operator>=(const Type& other) const {
         if (dynamic_cast<const TryReassign*>(&other)) return true;
 
         const auto& type = text();
-        return type == "Syntax" or type == "Any" or type == other.text();
+        return type == "Any" or type == other.text();
     }
 
 
@@ -152,7 +152,7 @@ namespace type {
         }
 
         const auto type = text();
-        return type == "Syntax" or (type == "Any" and other.text() != "Any");
+        return type == "Any" and other.text() != "Any";
     }
 
 
@@ -179,7 +179,7 @@ namespace type {
         }
 
         const auto type = text();
-        return type == "Syntax" or type == "Any"; // or type == other.text();
+        return type == "Any"; // or type == other.text();
     }
 
 

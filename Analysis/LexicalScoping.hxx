@@ -415,7 +415,7 @@ struct LexicalAnalysis {
             }
 
             if (pattern.type)
-                std::visit(*this, std::make_shared<expr::Type>(pattern.type)->variant());
+                std::visit(*this, expr::Type{pattern.type}.variant());
 
             if (pattern.value)
                 std::visit(*this, pattern.value->variant());

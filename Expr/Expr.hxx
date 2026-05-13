@@ -823,12 +823,14 @@ struct Syntax : Expr {
 // Only reason this is needed is to distinguish between expressions like
 // 1 + 2 and (1 + 2)
 // since they could get assigned 2 different values
+// but is this the behaviour that I want?
 struct Grouping : Expr {
     ExprPtr expr;
     Grouping(ExprPtr e) noexcept : expr{std::move(e)} {}
 
     std::string stringify(const size_t indent = 0) const override {
-        return '(' + expr->stringify(indent) + ')';
+        // return '(' + expr->stringify(indent) + ')';
+        return expr->stringify(indent);
     }
 
     bool involvesName(const std::string_view sv) const override {

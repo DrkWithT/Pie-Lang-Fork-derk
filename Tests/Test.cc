@@ -2427,9 +2427,7 @@ w = wow();
 a: w.inner = w.inner();
 )";
 
-    pie::test::run(src);
-
-    SUCCEED();
+    REQUIRE_NOTHROW(pie::test::run(src));
 }
 
 
@@ -2515,9 +2513,7 @@ f();
 
 )";
 
-    pie::test::run(src);
-
-    SUCCEED();
+    REQUIRE_NOTHROW(pie::test::run(src));
 }
 
 

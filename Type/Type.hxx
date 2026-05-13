@@ -18,9 +18,7 @@ inline namespace value {
     using ValuePtr = std::shared_ptr<Value>;
 }
 
-namespace interp {
-    class Visitor;
-}
+namespace interp { class Visitor; }
 
 namespace type {
 

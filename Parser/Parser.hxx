@@ -7,6 +7,7 @@
 #include <vector>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <deque>
 #include <algorithm>
 #include <iterator>
@@ -18,6 +19,7 @@
 #include "../Expr/Expr.hxx"
 #include "../Parser/Precedence.hxx"
 #include "../Utils/utils.hxx"
+#include "ExprContains.hxx"
 
 
 inline namespace pie {
@@ -30,6 +32,7 @@ class Parser {
 
     // statically known things:
     std::vector<Operators> op_env;
+    std::vector<std::unordered_set<std::string>> env;
     std::vector<std::string> namespaces;
 
     // deque instead of vector for pop_front
@@ -45,6 +48,14 @@ class Parser {
         CALL,
     };
 
+
+    bool envContains(const std::string& op) const {
+        for (const auto &e : env)
+            if (e.contains(op)) return true;
+
+
+        return false;
+    }
 
 
     bool opsContain(const std::string& op) const {
@@ -78,11 +89,11 @@ class Parser {
 public:
 
     Parser(Tokens t, std::filesystem::path r = ".") noexcept
-    : tokens{std::move(t)}, token_iterator{tokens.begin()}, op_env(1), root{r.remove_filename()}
+    : tokens{std::move(t)}, token_iterator{tokens.begin()}, op_env(1), env(1), root{r.remove_filename()}
     {}
 
 
-    explicit Parser(std::filesystem::path r) noexcept : op_env(1), root{r.remove_filename()} {}
+    explicit Parser(std::filesystem::path r) noexcept : op_env(1), env(1), root{r.remove_filename()} {}
 
 
     [[nodiscard]] bool atEnd(size_t offset = 0) const noexcept { return std::next(token_iterator, offset) == tokens.end() or std::next(token_iterator, offset)->kind == TokenKind::END; }
@@ -301,6 +312,11 @@ public:
             case ASSIGN:
                 if constexpr (CTX == Context::MATCH) return left;
 
+                if (auto fix = expr::exprContains<expr::Fix>(left)) {
+                    env.back().insert(fix->stringify());
+                    unAddOp(fix);
+                }
+
                 return std::make_shared<expr::Assignment>(
                     std::move(left),
                     type::builtins::_(),
@@ -315,6 +331,39 @@ public:
                 [[fallthrough]];
 
             default: util::error("Couldn't parse \"" + token.text + "\"!!");
+        }
+    }
+
+
+    void unAddOp(const expr::Fix* fix) {
+        switch (fix->type()) {
+            case TokenKind::PREFIX:
+            case TokenKind::INFIX:
+            case TokenKind::SUFFIX:
+                op_env.back().erase(fix->name);
+                return;
+
+
+            case TokenKind::EXFIX: { // name1 x name2
+                auto exfix = dynamic_cast<const expr::Exfix*>(fix);
+                if (not exfix) util::error();
+
+                op_env.back().erase(exfix->name);
+                op_env.back().erase(exfix->name2);
+                return;
+            }
+
+            case TokenKind::MIXFIX: {
+                auto op = dynamic_cast<const expr::Operator*>(fix);
+                if (not op) util::error();
+
+                op_env.back().erase(op->name);
+                for (const auto& name : op->rest)
+                    op_env.back().erase(name);
+                return;
+            }
+
+            default: util::error();
         }
     }
 
@@ -1202,15 +1251,17 @@ public:
             p = std::make_shared<expr::Suffix>(name, std::move(high), std::move(low), shift, std::vector<expr::ExprPtr>{/*std::move(func)*/});
         }
 
+        p->funcs.push_back(func);
+        if (envContains(p->stringify())) return p;
+
 
         // ops[name] = p.get();
         if (not opsContain(name)) {
             // ops[name] = p->clone();
             op_env.back()[name] = p->clone();
+            op_env.back()[name]->funcs.pop_back(); // probably not needed!
         }
 
-        // pushing back after cloning so that the op table doesn't contain the closure
-        p->funcs.push_back(std::move(func));
         return p;
     }
 
@@ -1249,16 +1300,24 @@ public:
                 util::error("Overload set of exfix operator must all have the same operator name '" + ex->name + ':' + ex->name2 + '\'');
             }
 
+            p->funcs.push_back(func);
 
-            return std::make_shared<expr::Exfix>(*ex);
+            return p;
+            // return std::make_shared<expr::Exfix>(*ex);
         }
+
+        p->funcs.push_back(func);
+        if (envContains(p->stringify())) return p;
 
 
         op_env.back()[name1] = p->clone();
+        op_env.back()[name1]->funcs.pop_back(); // probably not needed!
+
         op_env.back()[name2] = p->clone(); //* maybe? //* maybe not...? idk
+        op_env.back()[name2]->funcs.pop_back(); // probably not needed!
 
         // pushing back after cloning so that the op table doesn't contain the closure
-        p->funcs.push_back(std::move(func));
+        // p->funcs.push_back(std::move(func));
 
         return p;
     };
@@ -1365,14 +1424,23 @@ public:
 
             if (not same) util::error(); // ! ADD ERR MSG
 
-            return std::make_shared<expr::Operator>(*arb);
+
+            p->funcs.push_back(std::move(func));
+            return p;
+            // return std::make_shared<expr::Operator>(*arb);
         }
+
+
+        p->funcs.push_back(func);
+        if (envContains(p->stringify())) return p;
+        p->funcs.pop_back();
 
         op_env.back()[p->name] = p->clone();
         // ops[p->name] = p->clone();
         for (const auto& name : rest) op_env.back()[name] = p->clone();
 
-        // push_back after clone on purpose. See other note
+
+        // push_back after clone on purpose.
         p->funcs.push_back(std::move(func));
         return p;
     }
@@ -1507,31 +1575,27 @@ public:
     }
 
 
-    /**
-     * @attention only call right before calling error/expected
-     * It exhausts the stream
-     */
+
+    //  only call right before calling error/expected since tt exhausts the stream
     void log(bool shift = false, bool begin = false) {
         puts("");
         const ptrdiff_t dist = std::distance(tokens.begin(), token_iterator);
         const ptrdiff_t diff = begin ? 0 : dist < 5 ? dist : 5;
 
-        std::copy(token_iterator - (shift ? diff : 0), tokens.end(), std::ostream_iterator<Token>{std::cout, " "});
+        std::copy(token_iterator - (shift ? diff : 0), tokens.end(), std::ostream_iterator<Token>{std::clog, " "});
         puts("");
     }
 
 
-    // const auto& operators() const noexcept { return ops; };
 
-    struct ScopeGuard {
-        Parser* p;
-         ScopeGuard(Parser* p) : p{p} { p->  scope(); }
-        ~ScopeGuard()                 { p->unscope(); }
-    };
-
-
-    void scope() { op_env.push_back({}); }
-    void unscope() { op_env.pop_back(); }
+    void scope() {
+           env.push_back({});
+        op_env.push_back({});
+    }
+    void unscope() {
+           env.pop_back();
+        op_env.pop_back();
+    }
 
 };
 

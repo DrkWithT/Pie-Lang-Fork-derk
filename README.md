@@ -785,10 +785,7 @@ make
 
 #### in order of priority
 
-
-- [ ] Add `Syntax` literals instead of relying on receiver's type
 - [ ] Fix variadic expansion
-- [ ] Lexically Scoped Operators
 - [ ] Remove preprocessor
 - [ ] File IO
 - [ ] Use Big Int instead of `int64_t`
@@ -807,6 +804,8 @@ make
 ---
 
 ### Done
+- [x] Add `Syntax` literals instead of relying on receiver's type
+- [x] Lexically Scoped Operators
 - [x] Capture variables by reference in lambdas
 - [x] Using delcarations introduce "references"
 - [x] fix `use x` and `use space ns`;

@@ -17,6 +17,51 @@
 // std::print((makeC(1, 2, 3).pack + ...));
 
 
+TEST_CASE("Assigned Operators", "[Operator]") {
+    const auto src1 = R"(
+(infix + = (a, b) => __builtin_add(a, b)) = 5;
+__builtin_print(infix + = (a, b) => __builtin_add(a, b));
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(5)");
+
+
+    const auto src2 = R"(
+(infix + = (a, b) => __builtin_add(a, b)) = 5;
+infix + = (a, b) => __builtin_add(a, b);
+
+1 + 2;
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+}
+
+
+
+
+TEST_CASE("Scoped Operators", "[Operator]") {
+    const auto src1 = R"(
+{
+    infix + = (a, b) => __builtin_add(a, b);
+    __builtin_print(1 + 2);
+};
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(3)");
+
+
+    const auto src2 = R"(
+{
+    infix + = (a, b) => __builtin_add(a, b);
+};
+1 + 2;
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+}
+
+
+
 
 TEST_CASE("Shaw's Test", "[Var]") {
     const auto src1 = R"(

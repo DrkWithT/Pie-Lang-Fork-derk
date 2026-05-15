@@ -19,7 +19,7 @@
 #include "../Expr/Expr.hxx"
 #include "../Parser/Precedence.hxx"
 #include "../Utils/utils.hxx"
-#include "ExprContains.hxx"
+#include "../Analysis/ExprContains.hxx"
 
 
 inline namespace pie {
@@ -312,7 +312,7 @@ public:
             case ASSIGN:
                 if constexpr (CTX == Context::MATCH) return left;
 
-                if (auto fix = expr::exprContains<expr::Fix>(left)) {
+                if (auto fix = analysis::exprContains<expr::Fix>(left)) {
                     env.back().insert(fix->stringify());
                     unAddOp(fix);
                 }

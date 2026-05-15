@@ -2,33 +2,32 @@
 
 #include "../Expr/Expr.hxx"
 #include <cstddef>
-#include <variant>
 
 
 
 inline namespace pie {
-namespace expr {
+namespace analysis {
 
     template <typename EXPR>
     const EXPR* checkPattern(expr::Match::Case::Pattern&);
 
     template <typename EXPR>
-    const EXPR* exprContains(ExprPtr expr) {
+    const EXPR* exprContains(expr::ExprPtr expr) {
         if (auto p = dynamic_cast<const EXPR*>(expr.get())) return p;
 
 
-        if (dynamic_cast<const Num *>(expr.get())) return nullptr;
-        if (dynamic_cast<const Bool*>(expr.get())) return nullptr;
-        if (dynamic_cast<const Name*>(expr.get())) return nullptr;
+        if (dynamic_cast<const expr::Num *>(expr.get())) return nullptr;
+        if (dynamic_cast<const expr::Bool*>(expr.get())) return nullptr;
+        if (dynamic_cast<const expr::Name*>(expr.get())) return nullptr;
 
-        if (auto l = dynamic_cast<const List*>(expr.get())) {
+        if (auto l = dynamic_cast<const expr::List*>(expr.get())) {
             for (const auto& e : l->elements)
                 if (auto p = exprContains<EXPR>(e)) return p;
 
             return nullptr;
         }
 
-        if (auto m = dynamic_cast<const Map*>(expr.get())) {
+        if (auto m = dynamic_cast<const expr::Map*>(expr.get())) {
             for (const auto& [key, value] : m->items) {
                 if (auto p = exprContains<EXPR>(key  )) return p;
                 if (auto p = exprContains<EXPR>(value)) return p;
@@ -37,20 +36,20 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto e = dynamic_cast<const Expansion*>(expr.get())) {
+        if (auto e = dynamic_cast<const expr::Expansion*>(expr.get())) {
             return exprContains<EXPR>(e->pack);
         }
 
-        if (auto f = dynamic_cast<const UnaryFold*>(expr.get())) {
+        if (auto f = dynamic_cast<const expr::UnaryFold*>(expr.get())) {
             return exprContains<EXPR>(f->pack);
         }
 
-        if (auto f = dynamic_cast<const SeparatedUnaryFold*>(expr.get())) {
+        if (auto f = dynamic_cast<const expr::SeparatedUnaryFold*>(expr.get())) {
             if (auto p = exprContains<EXPR>(f->lhs)) return p;
             return exprContains<EXPR>(f->rhs);
         }
 
-        if (auto f = dynamic_cast<const BinaryFold*>(expr.get())) {
+        if (auto f = dynamic_cast<const expr::BinaryFold*>(expr.get())) {
             if (auto p = exprContains<EXPR>(f->init)) return p;
             if (auto p = exprContains<EXPR>(f->pack)) return p;
             if (f->sep) return exprContains<EXPR>(f->sep);
@@ -58,14 +57,14 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto ass = dynamic_cast<const Assignment*>(expr.get())) {
+        if (auto ass = dynamic_cast<const expr::Assignment*>(expr.get())) {
             if (auto p = exprContains<EXPR>(ass->lhs)) return p;
             // todo: check if you need to check the type
 
             return exprContains<EXPR>(ass->rhs);
         }
 
-        if (auto cls = dynamic_cast<const Class*>(expr.get())) {
+        if (auto cls = dynamic_cast<const expr::Class*>(expr.get())) {
             for (const auto& [_, __, expr] : cls->fields) {
                 // todo check the types
                 if (auto p = exprContains<EXPR>(expr)) return p;
@@ -74,13 +73,13 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto onion = dynamic_cast<const Union*>(expr.get())) {
+        if (auto onion = dynamic_cast<const expr::Union*>(expr.get())) {
             // todo: I think I need to check the types
 
             return nullptr;
         }
 
-        if (auto match = dynamic_cast<const Match*>(expr.get())) {
+        if (auto match = dynamic_cast<const expr::Match*>(expr.get())) {
             if (auto p = exprContains<EXPR>(match->expr)) return p;
 
             for (const auto& kase : match->cases) {
@@ -94,14 +93,14 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto t = dynamic_cast<const Type*>(expr.get())) {
+        if (auto t = dynamic_cast<const expr::Type*>(expr.get())) {
             if (auto expr_type = dynamic_cast<const type::ExprType*>(t->type.get()))
                 return exprContains<EXPR>(expr_type->t);
 
             return nullptr;
         }
 
-        if (auto l = dynamic_cast<const Loop*>(expr.get())) {
+        if (auto l = dynamic_cast<const expr::Loop*>(expr.get())) {
             if (l->kind) if (auto p = exprContains<EXPR>(l->kind)) return p;
             if (auto p = exprContains<EXPR>(l->body)) return p;
             if (l->els ) if (auto p = exprContains<EXPR>(l->els )) return p;
@@ -109,23 +108,23 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto b = dynamic_cast<const Break*>(expr.get())) {
+        if (auto b = dynamic_cast<const expr::Break*>(expr.get())) {
             return exprContains<EXPR>(b->expr);
         }
 
-        if (dynamic_cast<const Continue*>(expr.get())) {
+        if (dynamic_cast<const expr::Continue*>(expr.get())) {
             return nullptr;
         }
 
-        if (auto acc = dynamic_cast<const Access*>(expr.get())) {
+        if (auto acc = dynamic_cast<const expr::Access*>(expr.get())) {
             return exprContains<EXPR>(acc->var);
         }
 
-        if (auto acc = dynamic_cast<const Cascade*>(expr.get())) {
+        if (auto acc = dynamic_cast<const expr::Cascade*>(expr.get())) {
             return nullptr;
         }
 
-        if (auto ns = dynamic_cast<const Namespace*>(expr.get())) {
+        if (auto ns = dynamic_cast<const expr::Namespace*>(expr.get())) {
             for (const auto& expr : ns->space) {
                 if (auto p = exprContains<EXPR>(expr)) return p;
             }
@@ -133,50 +132,50 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto acc = dynamic_cast<const SpaceAccess*>(expr.get())) {
+        if (auto acc = dynamic_cast<const expr::SpaceAccess*>(expr.get())) {
             return nullptr;
         }
 
-        if (auto use = dynamic_cast<const Use*>(expr.get())) {
+        if (auto use = dynamic_cast<const expr::Use*>(expr.get())) {
             return nullptr;
         }
 
-        if (auto use = dynamic_cast<const UseSpace*>(expr.get())) {
+        if (auto use = dynamic_cast<const expr::UseSpace*>(expr.get())) {
             return nullptr;
         }
 
-        if (auto import = dynamic_cast<const Import*>(expr.get())) {
+        if (auto import = dynamic_cast<const expr::Import*>(expr.get())) {
             return nullptr;
         }
 
-        if (auto syn = dynamic_cast<const Syntax*>(expr.get())) {
+        if (auto syn = dynamic_cast<const expr::Syntax*>(expr.get())) {
             // return exprContains<EXPR>(syn->expr);
             return nullptr;
         }
 
-        if (auto g = dynamic_cast<const Grouping*>(expr.get())) {
+        if (auto g = dynamic_cast<const expr::Grouping*>(expr.get())) {
             return exprContains<EXPR>(g->expr);
         }
 
-        if (auto op = dynamic_cast<const UnaryOp*>(expr.get())) {
+        if (auto op = dynamic_cast<const expr::UnaryOp*>(expr.get())) {
             return exprContains<EXPR>(op->expr);
         }
 
-        if (auto op = dynamic_cast<const BinOp*>(expr.get())) {
+        if (auto op = dynamic_cast<const expr::BinOp*>(expr.get())) {
             if (auto p = exprContains<EXPR>(op->lhs)) return p;
 
             return exprContains<EXPR>(op->rhs);
         }
 
-        if (auto op = dynamic_cast<const PostOp*>(expr.get())) {
+        if (auto op = dynamic_cast<const expr::PostOp*>(expr.get())) {
             return exprContains<EXPR>(op->expr);
         }
 
-        if (auto op = dynamic_cast<const CircumOp*>(expr.get())) {
+        if (auto op = dynamic_cast<const expr::CircumOp*>(expr.get())) {
             return exprContains<EXPR>(op->expr);
         }
 
-        if (auto op = dynamic_cast<const OpCall*>(expr.get())) {
+        if (auto op = dynamic_cast<const expr::OpCall*>(expr.get())) {
             for (const auto& arg : op->exprs) {
                 if (auto p = exprContains<EXPR>(arg)) return p;
             }
@@ -184,7 +183,7 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto call = dynamic_cast<const Call*>(expr.get())) {
+        if (auto call = dynamic_cast<const expr::Call*>(expr.get())) {
             if (auto p = exprContains<EXPR>(call->func)) return p;
 
             for (const auto& arg : call->args) {
@@ -194,11 +193,11 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto closure = dynamic_cast<const Closure*>(expr.get())) {
+        if (auto closure = dynamic_cast<const expr::Closure*>(expr.get())) {
             return exprContains<EXPR>(closure->body);
         }
 
-        if (auto block = dynamic_cast<const Block*>(expr.get())) {
+        if (auto block = dynamic_cast<const expr::Block*>(expr.get())) {
             for (const auto& expr : block->lines) {
                 if (auto p = exprContains<EXPR>(expr)) return p;
             }
@@ -206,7 +205,7 @@ namespace expr {
             return nullptr;
         }
 
-        if (auto fix = dynamic_cast<const Fix*>(expr.get())) {
+        if (auto fix = dynamic_cast<const expr::Fix*>(expr.get())) {
             for (const auto& expr : fix->funcs) {
                 if (auto p = exprContains<EXPR>(expr)) return p;
             }
@@ -221,7 +220,7 @@ namespace expr {
 
     template <typename EXPR>
     const EXPR* checkPattern(expr::Match::Case::Pattern& pat) {
-        if (std::holds_alternative<Match::Case::Pattern::Single>(pat.pattern)) {
+        if (std::holds_alternative<expr::Match::Case::Pattern::Single>(pat.pattern)) {
             auto& pattern = get<expr::Match::Case::Pattern::Single>(pat.pattern);
 
             // todo: check this type as well!

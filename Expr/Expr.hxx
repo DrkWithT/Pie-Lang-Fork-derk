@@ -1,8 +1,8 @@
 #pragma once
 
-#include <iostream>
-#include <print>
-#include <cmath>
+// #include <iostream>
+// #include <print>
+// #include <cmath>
 #include <string>
 #include <filesystem>
 #include <vector>
@@ -13,7 +13,7 @@
 #include <ranges>
 #include <variant>
 #include <optional>
-#include <numeric>
+// #include <numeric>
 #include <memory>
 
 #include "../Utils/utils.hxx"
@@ -784,10 +784,11 @@ struct CircumOp : Expr {
 
 
 struct OpCall : Expr {
-    std::string first;
-    std::vector<std::string> rest;
-    std::vector<ExprPtr> exprs;
-    std::vector<bool> op_pos;
+    std::string first; // leading operator 
+    std::vector<std::string> rest; // empty or not
+    std::vector<ExprPtr> exprs; // arguments
+    std::vector<bool> op_pos; // length(op_pos) --> 1 + length(rest) + length(exprs)
+    // ? NOTE: if the bit is 1, the operator is in that position... the parser resolve this
 
     OpCall(
         std::string f, std::vector<std::string> ops, std::vector<ExprPtr> ex,
@@ -801,6 +802,7 @@ struct OpCall : Expr {
     std::string stringify(const size_t indent = 0) const override {
 
         std::string s;
+        // ? NOTE: this just prints the operator stuff together between the operands' stuff
         for (ssize_t op = -1, i{}; const auto& field : op_pos) {
             if (field) {
                 if (op == -1) s += first;
@@ -988,12 +990,13 @@ struct Fix : Expr {
     std::string name;
 
     // precedence level:
-    std::string high; 
-    std::string low; 
+    std::string high;   // ? highest precedence level for operator
+    // ? a custom operator can have a level between precedence levels in Pie, BUT if the levels are the same, the operator has the same level as low.
+    std::string low;    // ? lowest precedence level for operator
 
-    int shift; // needed for printing
+    int shift; // ? needed for printing
 
-    std::vector<ExprPtr> funcs;
+    std::vector<ExprPtr> funcs; // ? NOTE: I can assume there's only 1 candidate.
     // ExprPtr func;
 
 

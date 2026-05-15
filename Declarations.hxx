@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string_view>
+#include <variant>
 
 #ifdef WEB_PIE
 using BigInt = long long;
@@ -43,19 +44,19 @@ using Node = std::variant<
     const struct Import               *,
     const struct SpaceAccess       *,
     const struct Grouping          *,
-    const struct UnaryOp           *,
-    const struct BinOp             *,
-    const struct PostOp            *,
-    const struct CircumOp          *,
-    const struct OpCall            *,
-    const struct Call              *,
+    const struct UnaryOp           *, // op INNER
+    const struct BinOp             *, // LHS op RHS
+    const struct PostOp            *, // INNER op
+    const struct CircumOp          *, // op1 INNER op2
+    const struct OpCall            *, // mixfix operator: op0 arg0 op1 arg1 ...
+    const struct Call              *, // regular function call
     const struct Closure           *,
     const struct Block             *,
-    const struct Prefix            *,
-    const struct Infix             *,
-    const struct Suffix            *,
-    const struct Exfix             *,
-    const struct Operator          *
+    const struct Prefix            *, // SEE: UnaryOp, is def of prefix-unary
+    const struct Infix             *, // SEE: BinOp
+    const struct Suffix            *, // SEE: PostOp
+    const struct Exfix             *, // SEE: CircumOp
+    const struct Operator          *  // Example: IF a THEN b ELSE c
 >;
 
 

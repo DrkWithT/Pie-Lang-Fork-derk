@@ -7,3 +7,4 @@ remote_includes/
 *.dSYM/
 *.txt
 *.pie
+build/

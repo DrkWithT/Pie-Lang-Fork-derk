@@ -1,3 +1,4 @@
+#include <utility>
 #include <iostream>
 #include <print>
 
@@ -49,7 +50,7 @@ namespace pie {
             return nullptr;
         }
 
-        [[nodiscard]] std::optional<SymbolInfo> Compiler::record_global(const std::string& symbol, std::unique_ptr<ObjectBase> object_ptr) noexcept {
+        [[maybe_unused]] std::optional<SymbolInfo> Compiler::record_global(const std::string& symbol, std::unique_ptr<ObjectBase> object_ptr) noexcept {
             SymbolInfo global_locus {
                 .id = static_cast<std::uint16_t>(m_globals.size()),    // ! NOTE: m_globals.size() is the real ID of the new global object.
                 .type = SymbolType::global
@@ -151,7 +152,7 @@ namespace pie {
             } else if (auto const_locus = lookup_constant(symbol); const_locus) {
                 encode_instruction(Opcode::push_const, const_locus->id);
             } else {
-                std::println(std::cerr, "\tNote: In emit_string(), the builtin / constant '{}' was unbound & not a known constant. Bytecode symbol information could not be resolved.", symbol);
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m In emit_string(), the builtin / constant '{}' was unbound & not a known constant. Bytecode symbol information could not be resolved.", symbol);
                 return false;
             }
 
@@ -169,7 +170,7 @@ namespace pie {
             } else if (auto maybe_local_locus = lookup_local(lexeme); maybe_local_locus) {
                 encode_instruction(Opcode::lookup, 0, maybe_local_locus->id);
             } else {
-                std::println(std::cerr, "\tNote: In emit_bool(), the bool literal '{}' was unbound & not a known constant. Bytecode symbol information could not be resolved.", lexeme);
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m In emit_bool(), the bool literal '{}' was unbound & not a known constant. Bytecode symbol information could not be resolved.", lexeme);
                 return false;
             }
 
@@ -190,7 +191,7 @@ namespace pie {
             } else if (auto maybe_local_locus = lookup_local(lexeme); maybe_local_locus) {
                 encode_instruction(Opcode::lookup, 0, maybe_local_locus->id);
             } else {
-                std::println(std::cerr, "\tNote: In emit_num(), the numeric literal '{}' was unbound & not a known constant. Bytecode symbol information could not be resolved.", lexeme);
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m In emit_num(), the numeric literal '{}' was unbound & not a known constant. Bytecode symbol information could not be resolved.", lexeme);
                 return false;
             }
 
@@ -210,7 +211,7 @@ namespace pie {
             } else if (auto maybe_local_locus = lookup_local(lexeme); maybe_local_locus) {
                 encode_instruction(Opcode::lookup, 0, maybe_local_locus->id);
             } else {
-                std::println(std::cerr, "\tNote: In emit_string(), the string literal '{}' was unbound & not a known constant. Bytecode symbol information could not be resolved.", lexeme);
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m In emit_string(), the string literal '{}' was unbound & not a known constant. Bytecode symbol information could not be resolved.", lexeme);
                 return false;
             }
 
@@ -237,7 +238,7 @@ namespace pie {
                 // ? We'll use a captured name constant, a `const std::string*` from the nearest parent scoped name, for a bottom-up lookup when Cherry runs.
                 encode_instruction(Opcode::lookup_by_const, next_constant_id);
             } else {
-                std::println(std::cerr, "\tNote: In emit_name(), identifier '{}' was undeclared in all scopes at this point.", lexeme);
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m In emit_name(), identifier '{}' was undeclared in all scopes at this point.", lexeme);
                 return false;
             }
 
@@ -251,7 +252,7 @@ namespace pie {
             auto key_locus = record_ident(lhs_ident);
 
             if (!emit_expr(rhs)) {
-                std::println(std::cerr, "\tNote: In emit_assignment(), RHS was invalid.");
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m In emit_assignment(), RHS was invalid.");
                 return false;
             }
 
@@ -272,7 +273,7 @@ namespace pie {
 
         [[nodiscard]] bool Compiler::help_emit_conditional(const expr::ExprPtr& check_arg, const expr::ExprPtr& yes, const expr::ExprPtr& no) {
             if (!emit_expr(check_arg)) {
-                std::println(std::cerr, "Note: help_emit_conditional(): invalid check expression found.");
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m help_emit_conditional(): invalid check expression found.");
                 return false;
             }
 
@@ -281,7 +282,7 @@ namespace pie {
             encode_instruction(Opcode::jump_else, 1, 0); // ? Temp IP offset of 0 is patched later!
 
             if (!emit_expr(yes)) {
-                std::println(std::cerr, "Note: help_emit_conditional(): invalid 'if-true' expression found.");
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m help_emit_conditional(): invalid 'if-true' expression found.");
                 return false;
             }
 
@@ -289,7 +290,7 @@ namespace pie {
             encode_instruction(Opcode::jump, 0);
 
             if (!emit_expr(no)) {
-                std::println(std::cerr, "Note: help_emit_conditional(): invalid 'else' expression found.");
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m help_emit_conditional(): invalid 'else' expression found.");
                 return false;
             }
 
@@ -310,7 +311,7 @@ namespace pie {
             if (callee_expr->stringify() == "__builtin_conditional") {
                 return help_emit_conditional(args.at(0), args.at(1), args.at(2));
             } else if (!emit_expr(callee_expr)) {
-                std::println(std::cerr, "\tNote: In emit_call(): invalid callee expression visited.");
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m In emit_call(): invalid callee expression visited.");
                 return false;
             }
 
@@ -319,7 +320,7 @@ namespace pie {
             for (std::uint16_t argc = 0; const auto& arg_expr : args) {
                 if (!emit_expr(arg_expr)) {
                     std::println(std::cerr,
-                        "\tNote: Invalid expression for arg {} of function:\n{}",
+                        "\t\x1b[1;33mNote:\x1b[0m Invalid expression for arg {} of function:\n{}",
                         argc, callee_expr->stringify()
                     );
                     return false;
@@ -341,12 +342,12 @@ namespace pie {
                 .constants = {},
                 .identifiers = {}
             });
-            m_scopes.push_back(SymbolScope {
+            SymbolsGuard closure_scope_guard {&m_scopes, SymbolScope {
                 .symbols = {},
                 .name = "anonymous-closure",
                 .next_constant_id = 0,
                 .next_ident_key_id = 0
-            });
+            }};
             
             // ? FIRST, bind args to param names in reverse order due to stack LIFO of VM. The environment is implicitly pushed in Lambda::call(...), mapping the last param to 1st param.
             std::vector<SymbolInfo> param_locuses; // ? Here, push back locuses only!
@@ -363,7 +364,7 @@ namespace pie {
             }
 
             if (!emit_expr(body)) {
-                std::println("\tNote: Invalid body expression in anonymous-closure:\n{}", body->stringify());
+                std::println("\t\x1b[1;33mNote:\x1b[0m Invalid body expression in anonymous-closure:\n{}", body->stringify());
                 return false;
             }
 
@@ -377,12 +378,109 @@ namespace pie {
                 )
             )->id;
 
-            m_scopes.pop_back();
             m_codes.pop_back();
 
             encode_instruction(Opcode::push_global, global_lambda_id);
+            m_bindable_lambda_id = global_lambda_id;
 
             return true;
+        }
+
+        [[nodiscard]] bool Compiler::emit_prefix(const expr::Prefix* prefix_decl) {
+            const auto& [op_name, prec_high, prec_low, prec_shift, op_funcs] = *prefix_decl;
+
+            if (!emit_expr(op_funcs.front())) {
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m failed to generate RHS of operator '{}' definition.", op_name);
+                return false;
+            }
+
+            m_codes.back().code.pop_back(); // ? Undo emitted push_const of temporary lambda, as its ID will be used to determine a constant reference to the operator's function & keep the stack cleaner.
+
+            auto object_ptr = (m_bindable_lambda_id.has_value()) ? m_globals.at(*m_bindable_lambda_id).get() : nullptr;
+            m_bindable_lambda_id = {};
+
+            if (object_ptr == nullptr) {
+                std::println(std::cerr, "Invalid RHS of infix-operator def found! Perhaps a lambda expression is missing (simpler RHS unsupported).");
+                return false;
+            }
+
+            if (!record_constant(op_name, FastValue {object_ptr})) {
+                return false;
+            }
+
+            return true;
+        }
+
+        [[nodiscard]] bool Compiler::emit_infix(const expr::Infix* infix_decl) {
+            const auto& [op_name, prec_high, prec_low, prec_shift, op_funcs] = *infix_decl;
+
+            if (!emit_expr(op_funcs.front())) {
+                std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m failed to generate RHS of operator '{}' definition.", op_name);
+                return false;
+            }
+
+            m_codes.back().code.pop_back(); // ? Undo emitted push_const of temporary lambda, as its ID will be used to determine a constant reference to the operator's function & keep the stack cleaner.
+
+            auto object_ptr = (m_bindable_lambda_id.has_value()) ? m_globals.at(*m_bindable_lambda_id).get() : nullptr;
+            m_bindable_lambda_id = {};
+
+            if (object_ptr == nullptr) {
+                std::println(std::cerr, "Invalid RHS of infix-operator def found! The lambda expression is missing (arbitrary RHS expression bodies are unsupported).");
+                return false;
+            }
+
+            if (!record_constant(op_name, FastValue {object_ptr})) {
+                return false;
+            }
+
+            return true;
+        }
+
+        [[nodiscard]] bool Compiler::emit_unary_op(const expr::UnaryOp* unary_op) {
+            const auto& [op_name, op_arg] = *unary_op;
+
+            if (auto overload_fn_constant_id = lookup_constant(op_name); overload_fn_constant_id) {
+                encode_instruction(Opcode::push_const, overload_fn_constant_id->id);
+                encode_instruction(Opcode::ref_env);
+
+                if (!emit_expr(op_arg)) {
+                    std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m Invalid INNER argument to unary {} found, please see errors.", op_name);
+                    return false;
+                }
+
+                encode_instruction(Opcode::call, 1);
+
+                return true;
+            }
+
+            std::println(std::cerr, "Invalid unary overload of '{}' in invocation here: It may be undeclared.", op_name);
+            return false;
+        }
+    
+        [[nodiscard]] bool Compiler::emit_binary_op(const expr::BinOp* binary_op) {
+            const auto& [lhs_arg, op_name, rhs_arg] = *binary_op;
+
+            if (auto overload_fn_constant_id = lookup_constant(op_name); overload_fn_constant_id) {
+                encode_instruction(Opcode::push_const, overload_fn_constant_id->id);
+                encode_instruction(Opcode::ref_env);
+
+                if (!emit_expr(lhs_arg)) {
+                    std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m Invalid LHS argument passed to binary '{}', please see errors.", op_name);
+                    return false;
+                }
+
+                if (!emit_expr(rhs_arg)) {
+                    std::println(std::cerr, "\t\x1b[1;33mNote:\x1b[0m Invalid RHS argument passed to binary '{}', please see errors.", op_name);
+                    return false;
+                }
+
+                encode_instruction(Opcode::call, 2);
+
+                return true;
+            }
+
+            std::println(std::cerr, "Invalid binary overload of '{}' in invocation here: It may be undeclared.", op_name);
+            return false; // todo
         }
 
         [[nodiscard]] bool Compiler::emit_expr(const expr::ExprPtr& any_expr) {
@@ -402,6 +500,14 @@ namespace pie {
                 return emit_call(*expr_call);
             } else if (auto expr_closure = std::get_if<const expr::Closure*>(&expr_variant); expr_closure) {
                 return emit_closure(*expr_closure);
+            } else if (auto expr_prefix = std::get_if<const expr::Prefix*>(&expr_variant); expr_prefix) {
+                return emit_prefix(*expr_prefix);
+            } else if (auto expr_infix = std::get_if<const expr::Infix*>(&expr_variant); expr_infix) {
+                return emit_infix(*expr_infix);
+            } else if (auto expr_unary_op = std::get_if<const expr::UnaryOp*>(&expr_variant); expr_unary_op) {
+                return emit_unary_op(*expr_unary_op);
+            } else if (auto expr_binary_op = std::get_if<const expr::BinOp*>(&expr_variant); expr_binary_op) {
+                return emit_binary_op(*expr_binary_op);
             } else {
                 std::println(std::cerr, "Compile error at emit_expr(): unknown expression type!");
                 return false;

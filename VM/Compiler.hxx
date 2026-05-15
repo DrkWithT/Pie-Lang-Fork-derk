@@ -63,15 +63,14 @@ namespace pie {
         };
 
         //? NOTE: RAII guard for pushing / popping symbol scopes of the compiler when needed.
-        template <std::same_as<SymbolScope> T>
         class SymbolsGuard {
         private:
             std::vector<SymbolScope>* m_scopes_ptr;
 
         public:
-            explicit constexpr SymbolsGuard(std::vector<SymbolScope>* scopes_ptr, std::same_as<SymbolScope> auto&& next_scope) noexcept
+            constexpr SymbolsGuard(std::vector<SymbolScope>* scopes_ptr, SymbolScope next_scope) noexcept
             : m_scopes_ptr {scopes_ptr} {
-                m_scopes_ptr->emplace_back(std::forward(next_scope));
+                m_scopes_ptr->push_back(std::move(next_scope));
             }
 
             SymbolsGuard(const SymbolsGuard&) = delete;
@@ -79,7 +78,7 @@ namespace pie {
             SymbolsGuard(SymbolsGuard&&) = delete;
             SymbolsGuard& operator=(SymbolsGuard&&) = delete;
 
-            ~SymbolsGuard() {
+            constexpr ~SymbolsGuard() {
                 if (m_scopes_ptr != nullptr) {
                     m_scopes_ptr->pop_back();
                 }
@@ -95,6 +94,7 @@ namespace pie {
             std::vector<SymbolScope> m_scopes;
             std::vector<std::unique_ptr<ObjectBase>> m_globals; // ? Stores anonymous objects too, not just global objects.
             std::vector<Chunk> m_codes;
+            std::optional<std::uint16_t> m_bindable_lambda_id; // ? Stores the heap ID of a RHS lambda for a following operator alias.
             bool m_within_call;
             bool m_within_lhs;
             bool m_within_rhs;
@@ -105,7 +105,7 @@ namespace pie {
             [[nodiscard]] const std::string* lookup_external_name_ptr(const std::string& symbol);
 
             //? NOTE: Use this for recording builtin names, allowing the compiler to understand those symbols in name -> location resolution.
-            [[nodiscard]] std::optional<SymbolInfo> record_global(const std::string& symbol, std::unique_ptr<ObjectBase> object_ptr) noexcept;
+            [[maybe_unused]] std::optional<SymbolInfo> record_global(const std::string& symbol, std::unique_ptr<ObjectBase> object_ptr) noexcept;
             [[nodiscard]] std::optional<SymbolInfo> record_ident(std::string symbol) noexcept;
 
             [[nodiscard]] std::optional<SymbolInfo> record_constant(const std::string& symbol, FastValue value);
@@ -134,6 +134,10 @@ namespace pie {
 
             [[nodiscard]] bool emit_call(const expr::Call* expr);
             [[nodiscard]] bool emit_closure(const expr::Closure* expr);
+            [[nodiscard]] bool emit_prefix(const expr::Prefix* prefix_decl);
+            [[nodiscard]] bool emit_infix(const expr::Infix* infix_decl);
+            [[nodiscard]] bool emit_unary_op(const expr::UnaryOp* unary_op);
+            [[nodiscard]] bool emit_binary_op(const expr::BinOp* binary_op);
 
             [[nodiscard]] bool emit_expr(const expr::ExprPtr& any_expr);
 
@@ -144,7 +148,7 @@ namespace pie {
                 .name = "(top-level)",
                 .next_constant_id = 0,
                 .next_ident_key_id = 0
-            }}, m_scopes {}, m_globals {}, m_codes {}, m_within_call {false}, m_within_lhs {false}, m_within_rhs {false} {
+            }}, m_scopes {}, m_globals {}, m_codes {}, m_bindable_lambda_id {}, m_within_call {false}, m_within_lhs {false}, m_within_rhs {false} {
                 m_scopes.emplace_back(SymbolScope {
                     .symbols = {},
                     .name = "(top-level)",

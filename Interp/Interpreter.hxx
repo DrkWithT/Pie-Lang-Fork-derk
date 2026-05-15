@@ -25,6 +25,7 @@
 #include "../Utils/Exceptions.hxx"
 #include "../Utils/ConstexprLookup.hxx"
 #include "../Lex/Lexer.hxx"
+#include "../Analysis/LexicalScoping.hxx"
 #include "../Expr/Expr.hxx"
 #include "../Type/Type.hxx"
 #include "../Parser/Parser.hxx"
@@ -78,10 +79,14 @@ private:
     std::unordered_map<std::string, std::vector<size_t>> co_map;
 
 
+
 public:
+    std::vector<size_t> import_indices;
 
 
-    Visitor() noexcept : env(1), op_env(1) { }
+    Visitor(std::vector<size_t> indices) noexcept
+    : env(1), op_env(1), import_indices{std::move(indices)}
+    { }
 
     // void addOperators(Operators os) {
     //     // ops.insert(os.begin(), os.end());
@@ -1079,18 +1084,38 @@ public:
     }
 
 
-    Value operator()(const expr::Import *import) const {
+    Value operator()(const expr::Import *import) {
         const auto src = util::readFile(auto{import->path}.replace_extension(".pie").string());
-        const Tokens v = lex::lex(src);
-        if (v.empty()) util::error("Can't import an empty file!");
+        const Tokens tokens = lex::lex(src);
+        if (tokens.empty()) util::error("Can't import an empty file!");
 
-        Parser p{v, import->path};
+        Parser p{std::move(tokens), import->path};
 
         auto exprs = p.parse();
 
+
+
+        analysis::LexicalScoping ls{import_indices[0]};
+        import_indices.erase(import_indices.begin());
+
+        for (auto& expr : exprs)
+            std::visit(ls, expr->variant());
+
+
+
         Value value;
-        for (Visitor v; const auto& expr : exprs)
+        Visitor v{std::move(ls).indeces};
+        for (const auto& expr : exprs)
+            // value = std::visit(*this, std::move(expr)->variant());
             value = std::visit(v, std::move(expr)->variant());
+
+
+
+        for (auto& [space, names] : v.namespaces) {
+            for (auto& [id, val] : names) {
+                namespaces[space][id] = std::move(val);
+            }
+        }
 
         return value;
     }
@@ -1101,7 +1126,7 @@ public:
 
         const auto space = sa->global ? NSName(sa->spaces) : findNS(sa->spaces);
 
-        if (not namespaces[space].contains(sa->name.ID)) util::error("Name '" + sa->name.name + "' not found in space " + space);
+        if (not namespaces[space].contains(sa->name.ID)) util::error("Name `" + sa->name.name + "` with ID [" + std::to_string(sa->name.ID) + "] not found in space " + space);
 
 
         return *get<value::ValuePtr>(namespaces[space][sa->name.ID]);

@@ -33,7 +33,7 @@ namespace cli {
         const bool run
     ) {
         Parser parser{canonical_root};
-        interp::Visitor visitor;
+        interp::Visitor visitor{{}};
 
         for (;;) try {
             std::string line;
@@ -106,14 +106,14 @@ namespace cli {
 
         if(run and (print_parsed or print_preprocessed or print_tokens)) puts("Output:\n");
 
-        pie::analysis::LexicalAnalysis anal;
+        pie::analysis::LexicalScoping anal;
         for (auto& expr : exprs)
             std::visit(anal, expr->variant());
 
         if (run) {
 
 
-            interp::Visitor visitor{};
+            interp::Visitor visitor{std::move(anal).indeces};
             for (const auto& expr : exprs)
                 std::visit(visitor, expr->variant());
         }

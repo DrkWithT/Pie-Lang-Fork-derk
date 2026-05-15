@@ -4,12 +4,15 @@
 #include <algorithm>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <unordered_map>
 #include <memory>
 #include <ranges>
 #include <variant>
 
+
+#include "../Lex/Lexer.hxx"
+#include "../Parser/Parser.hxx"
 #include "../Utils/utils.hxx"
 #include "../Utils/Exceptions.hxx"
 #include "../Expr/Expr.hxx"
@@ -37,9 +40,9 @@ struct NameSpace {
 };
 
 
-struct LexicalAnalysis {
+class LexicalScoping {
 
-    size_t variable_index{};
+    size_t variable_index;
 
     // scopes
     std::vector<std::unordered_map<std::string, size_t>> env;
@@ -51,8 +54,11 @@ struct LexicalAnalysis {
 
     bool in_loop = false;
 
+public:
 
-    LexicalAnalysis() {
+    std::vector<size_t> indeces;
+
+    LexicalScoping(const size_t index = 0) : variable_index(index) {
         env.push_back({});
 
         const auto builtins = {
@@ -110,6 +116,31 @@ struct LexicalAnalysis {
             env[0][builtin] = variable_index++;
     }
 
+
+
+    // LexicalScoping(const LexicalScoping& other)
+    // : variable_index{other.variable_index},
+    //   env{other.env},
+    //   namespaces{other.namespaces},
+    //   space_dir{other.space_dir},
+    //   in_loop{other.in_loop}
+    // {
+    //     for (const auto& ns : other.global_spaces)
+    //         global_spaces.push_back(std::make_shared<NameSpace>(*ns));
+    // }
+
+    // LexicalScoping& operator=(const LexicalScoping& other) {
+    //     variable_index = other.variable_index;
+    //     env = other.env;
+    //     namespaces = other.namespaces;
+    //     space_dir = other.space_dir;
+    //     in_loop = other.in_loop;
+
+    //     for (const auto& ns : other.global_spaces)
+    //         global_spaces.push_back(std::make_shared<NameSpace>(*ns));
+
+    //     return *this;
+    // }
 
 
     // void operator()(auto *node) { }
@@ -522,20 +553,31 @@ struct LexicalAnalysis {
             return;
         }
 
-        if (findVar(import->stringify())) return;
-        else util::error();
+
+        const auto src = util::readFile(auto{import->path}.replace_extension(".pie").string());
+        const Tokens tokens = lex::lex(src);
+        if (tokens.empty()) util::error("Can't import an empty file!");
+
+        Parser p{std::move(tokens), import->path};
+
+        auto exprs = p.parse();
+
+        indeces.push_back(variable_index);
+        LexicalScoping v{variable_index};
+
+        for (const auto& expr : exprs)
+            std::visit(v, std::move(expr)->variant());
 
 
-        // const auto src = util::readFile(auto{import->path}.replace_extension(".pie").string());
-        // const Tokens v = lex::lex(src);
-        // if (v.empty()) util::error("Can't import an empty file!");
+        for (const auto& [ns, space] : v.namespaces) {
+            for (const auto& [name, id] : space) {
+                namespaces[ns][name] = id;
+            }
+        }
 
-        // Parser p{v, import->path};
+        addNamespaces(global_spaces, v.global_spaces);
 
-        // auto [exprs, _] = p.parse();
-
-        // for (const auto& expr : exprs)
-        //     std::visit(*this, std::move(expr)->variant());
+        variable_index = v.variable_index;
     }
 
 
@@ -933,6 +975,26 @@ struct LexicalAnalysis {
     }
 
 
+    void addNamespaces(
+        std::vector<std::shared_ptr<NameSpace>>& spaces,
+        const std::vector<std::shared_ptr<NameSpace>>& new_spaces
+    ) {
+        for (const auto& new_space : new_spaces) {
+            if (
+                auto iter = std::ranges::find_if(
+                    spaces,
+                    [&new_space] (const auto& space) { return space->name == new_space->name; }
+                );
+                iter != spaces.cend()
+            ) {
+                addNamespaces((*iter)->children, new_space->children);
+            }
+            // in this case, just push the new space with all its children
+            else spaces.push_back(new_space);
+        }
+    }
+
+
     [[nodiscard]] std::optional<size_t> findVar(const std::string& name) const {
         if (name.empty()) return {}; // no reason to search
 
@@ -954,8 +1016,8 @@ struct LexicalAnalysis {
 
 
     struct ScopeGuard {
-        LexicalAnalysis* that;
-         ScopeGuard(LexicalAnalysis* t) : that{t} { that->env.emplace_back(); }
+        LexicalScoping* that;
+         ScopeGuard(LexicalScoping* t) : that{t} { that->env.emplace_back(); }
         ~ScopeGuard() { that->env.pop_back(); }
     };
 

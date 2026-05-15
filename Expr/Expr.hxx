@@ -50,12 +50,6 @@ using Operators  = std::unordered_map<std::string, std::unique_ptr<expr::Fix>>;
 
 
 
-// template <>
-// struct std::hash<expr::ExprPtr> {
-//     size_t operator()(const expr::ExprPtr& expr) const { return std::hash<std::string>{}(expr->stringify()); }
-// };
-
-
 namespace expr {
 
 struct StringID {

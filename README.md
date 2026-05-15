@@ -11,6 +11,9 @@
 - Bare-bones (if it doesn't need to be keyword, then it isn't + no operators)
 - Still quirky (different even if the difference is not good)
 
+## Building
+ - Official: `make clean && make -j <jobs>`
+ - Experimental: `cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Debug|Release && cmake --build build`
 
 ### Index:
 - [Variables](#variables)

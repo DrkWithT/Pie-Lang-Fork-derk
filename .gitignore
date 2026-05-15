@@ -5,6 +5,6 @@ code/
 .vscode/
 remote_includes/
 *.dSYM/
-*.txt
+compile_flags.txt
 *.pie
 build/

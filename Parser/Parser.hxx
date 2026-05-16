@@ -31,8 +31,11 @@ class Parser {
     typename Tokens::iterator token_iterator;
 
     // statically known things:
+    std::vector<Operators> prefix_op_env;
     std::vector<Operators> op_env;
+
     std::vector<std::unordered_set<std::string>> env;
+
     std::vector<std::string> namespaces;
 
     // deque instead of vector for pop_front
@@ -53,10 +56,8 @@ class Parser {
         for (const auto &e : env)
             if (e.contains(op)) return true;
 
-
         return false;
     }
-
 
     bool opsContain(const std::string& op) const {
         for (const auto& ops : op_env)
@@ -65,13 +66,28 @@ class Parser {
         return false;
     }
 
-    const std::unique_ptr<expr::Fix>& findOp(const std::string& op) const {
-        for (const auto& ops : std::views::reverse(op_env)) {
+    bool prefixOpsContain(const std::string& op) const {
+        for (const auto &e : prefix_op_env)
+            if (e.contains(op)) return true;
+
+        return false;
+    }
+
+
+    const std::unique_ptr<expr::Fix>& findOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
+        for (const auto& ops : std::views::reverse(op_env))
+            if (ops.contains(op)) return ops.at(op);
+
+        util::error(loc);
+    }
+
+
+    const std::unique_ptr<expr::Fix>& findPrefixOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
+        for (const auto& ops : std::views::reverse(prefix_op_env)) {
             if (ops.contains(op)) return ops.at(op);
         }
 
-        // util::error("Operator `" + op + "` not found!");
-        util::error();
+        util::error(loc);
     }
 
 
@@ -83,17 +99,28 @@ class Parser {
             }
         }
 
+        for (const auto& operators : prefix_op_env) {
+            for (const auto& [name, op] : operators) {
+                consolidated[name] = op->clone();
+            }
+        }
+
         return consolidated;
     }
 
 public:
 
     Parser(Tokens t, std::filesystem::path r = ".") noexcept
-    : tokens{std::move(t)}, token_iterator{tokens.begin()}, op_env(1), env(1), root{r.remove_filename()}
+    :
+        tokens{std::move(t)}, token_iterator{tokens.begin()},
+        prefix_op_env(1), op_env(1), env(1),
+        root{r.remove_filename()}
     {}
 
 
-    explicit Parser(std::filesystem::path r) noexcept : op_env(1), env(1), root{r.remove_filename()} {}
+    explicit Parser(std::filesystem::path r) noexcept
+    : prefix_op_env(1), op_env(1), env(1), root{r.remove_filename()}
+    {}
 
 
     [[nodiscard]] bool atEnd(size_t offset = 0) const noexcept { return std::next(token_iterator, offset) == tokens.end() or std::next(token_iterator, offset)->kind == TokenKind::END; }
@@ -167,16 +194,11 @@ public:
             case BREAK: 
                 // if (check(SEMI)) return std::make_shared<expr::Break>();
                 return std::make_shared<expr::Break>(parseExpr());
-                // if (check(SEMI)) return std::make_shared<expr::Break>(           );
-                // else             return std::make_shared<expr::Break>(parseExpr());
 
             case CONTINUE:
                 // if (check(SEMI))
                 return std::make_shared<expr::Continue>();
                 // return std::make_shared<expr::Continue>(parseExpr());
-
-                // if (check(SEMI)) return std::make_shared<expr::Continue>(           );
-                // else             return std::make_shared<expr::Continue>(parseExpr());
 
             case NAMESPACE: return nameSpace();
             case USE: {
@@ -338,6 +360,9 @@ public:
     void unAddOp(const expr::Fix* fix) {
         switch (fix->type()) {
             case TokenKind::PREFIX:
+                prefix_op_env.back().erase(fix->name);
+                return;
+
             case TokenKind::INFIX:
             case TokenKind::SUFFIX:
                 op_env.back().erase(fix->name);
@@ -955,8 +980,13 @@ public:
             return std::make_shared<expr::Block>(std::move(exprs));
         }
         else { // list literals
+
+            // a scope was opened wrongfully. Add the operators from that new-fake scope to the previous scope!
             for (auto& [name, op] : op_env.back()) 
                 op_env[op_env.size() - 2][name] = std::move(op);
+
+            for (auto& [name, op] : prefix_op_env.back()) 
+                prefix_op_env[prefix_op_env.size() - 2][name] = std::move(op);
 
             unscope();
 
@@ -1033,7 +1063,8 @@ public:
 
 
     expr::ExprPtr prefixName(Token token) {
-        if (opsContain(token.text)) return parseOperator(std::move(token));
+        // if (opsContain(token.text)) return parseOperator(std::move(token));
+        if (prefixOpsContain(token.text)) return parsePrefixOperator(std::move(token));
 
 
         if (match(TokenKind::COLON)){ // exprs preceeded by `:` are parsed as type
@@ -1115,8 +1146,8 @@ public:
         return std::make_shared<expr::Name>(std::move(token).text);
     }
 
-    expr::ExprPtr parseOperator(Token token) {
-        switch (const auto& op = findOp(token.text); op->type()) {
+    expr::ExprPtr parsePrefixOperator(Token token) {
+        switch (const auto& op = findPrefixOp(token.text); op->type()) {
             case TokenKind::PREFIX:{
                 const int prec = prec::calculate(op->high, op->low, consolidateOps());
                 return std::make_shared<expr::UnaryOp>(std::move(token).text, parseExpr(prec));
@@ -1133,7 +1164,7 @@ public:
             }
 
             case TokenKind::MIXFIX: {
-                const auto& op = dynamic_cast<const expr::Operator*>(findOp(token.text).get());
+                const auto& op = dynamic_cast<const expr::Operator*>(findPrefixOp(token.text).get());
                 if (not op->op_pos[0]) util::error("Operator '" + token.text + "' has to come after an expression!");
 
                 const int prec = prec::calculate(op->high, op->low, consolidateOps());
@@ -1172,6 +1203,51 @@ public:
             p += ']';
         }
     }
+
+
+    void checkOperatpr(const TokenKind kind, const std::string& name, const std::string& high, const std::string& low) {
+        using enum TokenKind;
+
+        // gotta dry out this part
+        // plus, I don't like that I made "Fix" take a "ExprPtr" rather than closure but I'll leave it for now
+        switch (kind) {
+            case PREFIX:
+                if (prefixOpsContain(name)) {
+                    auto& op = findPrefixOp(name);
+
+                    // op->funcs.push_back(std::move(func));
+
+                    if (op->type() != PREFIX) {
+                        std::println(std::cerr, "Overload set for operator `{}` must have the same operator type:", name);
+                        util::expected(op->type(), PREFIX);
+                    }
+
+                    if (op->high != high or op->low != low)
+                        util::error("Overloaded set of operator `" + name + "` must all have the same precedence!");
+                }
+                break;
+
+            case INFIX:
+            case SUFFIX:
+                if (opsContain(name)) {
+                    auto& op = findOp(name);
+
+                    // op->funcs.push_back(std::move(func));
+
+                    if (op->type() != kind) {
+                        std::println(std::cerr, "Overload set for operator `{}` must have the same operator type:", name);
+                        util::expected(op->type(), kind);
+                    }
+
+                    if (op->high != high or op->low != low)
+                        util::error("Overloaded set of operator `" + name + "` must all have the same precedence!");
+                }
+                break;
+
+            default: util::error();
+        }
+    }
+
 
     // operator defintion
     // fix(PREC) op = (...) => ...
@@ -1220,21 +1296,7 @@ public:
         if (not c) util::error("[pre/in/suf] fix operator has to be equal to a function!");
 
 
-        // gotta dry out this part
-        // plus, I don't like that I made "Fix" take a "ExprPtr" rather than closure but I'll leave it for now
-
-        if (opsContain(name)) {
-            const auto& op = findOp(name);
-            // op->funcs.push_back(std::move(func));
-
-            if (op->type() != token.kind) {
-                std::println(std::cerr, "Overload set for operator '{}' must have the same operator type:", name);
-                util::expected(op->type(), token.kind);
-            }
-
-            if (op->high != high or op->low != low)
-                util::error("Overloaded set of operator '" + name + "' must all have the same precedence!");
-        }
+        checkOperatpr(token.kind, name, high, low);
 
 
         std::shared_ptr<expr::Fix> p;
@@ -1255,12 +1317,17 @@ public:
         if (envContains(p->stringify())) return p;
 
 
-        // ops[name] = p.get();
-        if (not opsContain(name)) {
-            // ops[name] = p->clone();
+        if (token.kind == PREFIX) {
+            if (not prefixOpsContain(name)) {
+                prefix_op_env.back()[name] = p->clone();
+                prefix_op_env.back()[name]->funcs.pop_back(); // probably not needed!
+            }
+        }
+        else if (not opsContain(name)) {
             op_env.back()[name] = p->clone();
             op_env.back()[name]->funcs.pop_back(); // probably not needed!
         }
+
 
         return p;
     }
@@ -1285,7 +1352,7 @@ public:
         );
 
 
-        if (opsContain(name1)) {
+        if (prefixOpsContain(name1)) {
             const auto& op = findOp(name1);
             // op->funcs.push_back(std::move(func));
 
@@ -1310,11 +1377,11 @@ public:
         if (envContains(p->stringify())) return p;
 
 
-        op_env.back()[name1] = p->clone();
-        op_env.back()[name1]->funcs.pop_back(); // probably not needed!
+        prefix_op_env.back()[name1] = p->clone();
+        prefix_op_env.back()[name1]->funcs.pop_back(); // probably not needed!
 
-        op_env.back()[name2] = p->clone(); //* maybe? //* maybe not...? idk
-        op_env.back()[name2]->funcs.pop_back(); // probably not needed!
+        prefix_op_env.back()[name2] = p->clone(); //* maybe? //* maybe not...? idk
+        prefix_op_env.back()[name2]->funcs.pop_back(); // probably not needed!
 
         // pushing back after cloning so that the op table doesn't contain the closure
         // p->funcs.push_back(std::move(func));
@@ -1394,6 +1461,7 @@ public:
             util::error("Operator '" + op_name + "' must be assigned to a closure with " + n + " parameters!");
         }
 
+        const bool is_prefix = op_pos.front(); // assigned here bc I move op_pos in the next line
         std::shared_ptr<expr::Fix> p =
             std::make_shared<expr::Operator>(
                 std::move(first),
@@ -1407,7 +1475,7 @@ public:
 
 
 
-        if (opsContain(first)) {
+        if (opsContain(first) or prefixOpsContain(first)) {
             const auto& op = findOp(first);
             // op->funcs.push_back(std::move(func));
 
@@ -1435,9 +1503,16 @@ public:
         if (envContains(p->stringify())) return p;
         p->funcs.pop_back();
 
-        op_env.back()[p->name] = p->clone();
-        // ops[p->name] = p->clone();
-        for (const auto& name : rest) op_env.back()[name] = p->clone();
+
+        if (is_prefix) {
+            prefix_op_env.back()[p->name] = p->clone();
+            for (const auto& name : rest) prefix_op_env.back()[name] = p->clone();
+        }
+        else {
+            op_env.back()[p->name] = p->clone();
+            for (const auto& name : rest) op_env.back()[name] = p->clone();
+        }
+
 
 
         // push_back after clone on purpose.

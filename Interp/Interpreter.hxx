@@ -50,6 +50,7 @@ private:
 
     std::vector<std::pair<Environment, EnvTag>> env;
     // Environment env;
+    std::vector<Operators> prefix_op_env;
     std::vector<Operators> op_env;
 
     std::unordered_map<
@@ -85,7 +86,7 @@ public:
 
 
     Visitor(std::vector<size_t> indices) noexcept
-    : env(1), op_env(1), import_indices{std::move(indices)}
+    : env(1), prefix_op_env(1), op_env(1), import_indices{std::move(indices)}
     { }
 
     // void addOperators(Operators os) {
@@ -102,6 +103,17 @@ public:
     //     }
     // }
 
+    bool prefixOpsContain(const std::string& op) const {
+        // no need to reverse in this case
+        for (const auto& ops : prefix_op_env) {
+            if (ops.contains(op)) return true;
+        }
+
+        return false;
+    }
+
+
+
     bool opsContain(const std::string& op) const {
         // no need to reverse in this case
         for (const auto& ops : op_env) {
@@ -111,13 +123,24 @@ public:
         return false;
     }
 
-    const std::unique_ptr<expr::Fix>& findOp(const std::string& op) const {
+
+    const std::unique_ptr<expr::Fix>& findPrefixOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
+        for (const auto& ops : std::views::reverse(prefix_op_env)) {
+            if (ops.contains(op)) return ops.at(op);
+        }
+
+        // util::error("Operator `" + op + "` not found!");
+        util::error(loc);
+    }
+
+
+    const std::unique_ptr<expr::Fix>& findOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
         for (const auto& ops : std::views::reverse(op_env)) {
             if (ops.contains(op)) return ops.at(op);
         }
 
         // util::error("Operator `" + op + "` not found!");
-        util::error();
+        util::error(loc);
     }
 
 
@@ -1593,7 +1616,7 @@ public:
         if (const auto& var = getVar(up->ID); var) return var->first;
 
 
-        const auto& op = findOp(up->op);
+        const auto& op = findPrefixOp(up->op);
         expr::Closure* func;
         Environment args_env;
 
@@ -1802,7 +1825,7 @@ public:
     Value operator()(const expr::CircumOp *cp) {
         if (const auto& var = getVar(cp->ID); var) return var->first;
 
-        const auto& op = findOp(cp->op1);
+        const auto& op = findPrefixOp(cp->op1);
         expr::Closure* func;
         Environment args_env;
 
@@ -1858,7 +1881,12 @@ public:
         if (const auto& var = getVar(oc->ID); var) return var->first;
 
 
-        const auto& op = findOp(oc->first);
+
+        auto& op = [this, oc] -> auto& { // const std::unique_ptr<expr::Fix>&
+            if (opsContain(oc->first)) return findOp(oc->first);
+            return findPrefixOp(oc->first);
+        }();
+
         expr::Closure* func;
         Environment args_env;
 
@@ -2862,13 +2890,40 @@ public:
         func->type.ret = validateType(std::move(func)->type.ret);
 
 
-        if (opsContain(fix->name)) {
-            findOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
-        }
-        else {
-            op_env.back()[fix->name] = fix->clone();
-        }
+        switch (fix->type()) {
+            using enum TokenKind;
 
+            case PREFIX:
+            case EXFIX :
+                if (prefixOpsContain(fix->name))
+                    findPrefixOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
+                else prefix_op_env.back()[fix->name] = fix->clone();
+
+                break;
+
+            case INFIX :
+            case SUFFIX:
+                if (opsContain(fix->name))
+                    findOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
+                else op_env.back()[fix->name] = fix->clone();
+                break;
+
+            case MIXFIX: {
+                auto mixfix = dynamic_cast<const expr::Operator*>(fix);
+                if (mixfix->op_pos.front()) {
+                    if (prefixOpsContain(fix->name))
+                        findPrefixOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
+                    else prefix_op_env.back()[fix->name] = fix->clone();
+                }
+                else {
+                    if (opsContain(fix->name))
+                        findOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
+                    else op_env.back()[fix->name] = fix->clone();
+                }
+            }
+
+            default:
+        }
 
         return *func;
         // return std::visit(*this, fix->funcs[0]->variant());

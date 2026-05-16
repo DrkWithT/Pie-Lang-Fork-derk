@@ -82,13 +82,13 @@ struct Capture {
     auto exprs = p.parse();
 
 
-    pie::analysis::LexicalAnalysis anal;
+    pie::analysis::LexicalScoping anal;
     for (const auto& expr : exprs)
         std::visit(anal, expr->variant());
 
     Capture c{};
 
-    interp::Visitor visitor;
+    interp::Visitor visitor{std::move(anal).indeces};
     for (const auto& expr : exprs)
         std::visit(visitor, expr->variant());
 

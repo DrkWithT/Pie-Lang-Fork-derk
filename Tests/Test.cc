@@ -17,6 +17,33 @@
 // std::print((makeC(1, 2, 3).pack + ...));
 
 
+TEST_CASE("Different Prefix Operators", "[Operator]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+prefix - = (a)    => __builtin_neg(a);
+infix  - = (a, b) => __builtin_sub(a, b);
+
+
+print(- - - 2 - - - - - - 5);
+
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(3)");
+
+
+    const auto src2 = R"(
+(infix + = (a, b) => __builtin_add(a, b)) = 5;
+infix + = (a, b) => __builtin_add(a, b);
+
+1 + 2;
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+}
+
+
+
 TEST_CASE("Assigned Operators", "[Operator]") {
     const auto src1 = R"(
 (infix + = (a, b) => __builtin_add(a, b)) = 5;
@@ -2235,7 +2262,7 @@ bye)");
 
 
 TEST_CASE("Operator Overloading", "[Overload]") {
-    const auto src = R"(
+    const auto src1 = R"(
 print = __builtin_print;
 
 mixfix(HIGH -) if : : else : = (cond: Bool  , thn, els) => 1;
@@ -2248,9 +2275,22 @@ print(if ("") { 1; } else { 2; });
 
 )";
 
-    REQUIRE(pie::test::run(src) == R"(1
+    REQUIRE(pie::test::run(src1) == R"(1
 2
 3)");
+
+    const auto src2 = R"(
+print = __builtin_print;
+
+infix + = (a: Int, b: Int) => __builtin_add(a, b); 
+infix + = (a: String, b: String) => __builtin_concat(a, b); 
+
+print(1 + 2);
+print("1" + "2");
+)";
+
+    REQUIRE(pie::test::run(src2) == R"(3
+12)");
 
 }
 

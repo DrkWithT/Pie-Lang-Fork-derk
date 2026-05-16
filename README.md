@@ -785,15 +785,15 @@ make
 
 #### in order of priority
 
+- [ ] Importing Operators
 - [ ] Fix variadic expansion
-- [ ] Remove preprocessor
 - [ ] File IO
+- [ ] Cascade operator `..`
 - [ ] Use Big Int instead of `int64_t`
 - [ ] Add default values to function parameters
 - [ ] Make `=` and `=>` overloadable
 - [ ] Fix builtin reset (value-reset, reset/name-reset) 
 - [ ] World domination
-- [ ] Cascade operator `..`
 - [ ] Move from Make to Bake
 - [ ] Improve error messages (add line and column numbers)
 - [ ] Add recursive operators
@@ -804,6 +804,7 @@ make
 ---
 
 ### Done
+- [x] Remove preprocessor
 - [x] Add `Syntax` literals instead of relying on receiver's type
 - [x] Lexically Scoped Operators
 - [x] Capture variables by reference in lambdas

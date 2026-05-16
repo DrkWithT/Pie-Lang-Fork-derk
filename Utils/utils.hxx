@@ -40,6 +40,12 @@ template <typename Except = std::runtime_error, bool print_loc = true>
 }
 
 
+[[noreturn]] inline void error(const std::source_location& location)
+{
+    error("[no diagnostic]. If you see this, please file a bug report!", location);
+}
+
+
 [[noreturn]] inline void expected(const TokenKind exp, const Token& got, const std::source_location& location = std::source_location::current()) {
     error(std::string{"Expected token "} + stringify(exp) + " and found " + stringify(got.kind) + ": " + got.text, location);
 }

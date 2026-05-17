@@ -400,7 +400,7 @@ namespace pie {
             m_bindable_lambda_id = {};
 
             if (object_ptr == nullptr) {
-                std::println(std::cerr, "Invalid RHS of infix-operator def found! Perhaps a lambda expression is missing (simpler RHS unsupported).");
+                std::println(std::cerr, "Invalid RHS of prefix-operator def found! Perhaps a lambda expression is missing (simpler RHS unsupported).");
                 return false;
             }
 

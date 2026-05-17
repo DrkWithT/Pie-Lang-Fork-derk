@@ -6,6 +6,19 @@
 
 namespace pie {
     namespace vm {
+        [[maybe_unused]] bool pie_native_neg(std::any context, int argc) {
+            auto state = std::any_cast<Context*>(context);
+
+            // ? BP = Temp_0 = <callee-reference>, Temp_1 = <env>, ...
+            const int callee_bp = state->sp - argc;
+
+            state->stack[callee_bp] = state->stack[callee_bp + 2].neg();
+            state->sp = callee_bp;
+            state->ip++;
+
+            return true;
+        }
+
         [[maybe_unused]] bool pie_native_add(std::any context, int argc) {
             auto state = std::any_cast<Context*>(context);
 
@@ -44,6 +57,82 @@ namespace pie {
             return true;
         }
 
+        [[maybe_unused]] bool pie_native_mul(std::any context, int argc) {
+            auto state = std::any_cast<Context*>(context);
+
+            // ? BP = Temp_0 = <callee-reference>
+            const int callee_bp = state->sp - argc;
+
+            // ? In-place subtraction: RET = LHS - RHS
+            // ? BP + 1 + 1 + 1 => TEMPORARY 1 AKA RHS
+            const auto& rhs_v = state->stack[callee_bp + 3];
+            // ? BP + 1 + 1 + 0 => TEMPORARY 0 AKA LHS
+            state->stack[callee_bp] = FastValue {state->stack[callee_bp + 2].mul(rhs_v)};
+
+            // ? Point SP to RET temporary.
+            state->sp = callee_bp;
+            state->ip++;
+
+            return true;
+        }
+
+        [[maybe_unused]] bool pie_native_div(std::any context, int argc) {
+            auto state = std::any_cast<Context*>(context);
+
+            // ? BP = Temp_0 = <callee-reference>
+            const int callee_bp = state->sp - argc;
+
+            // ? In-place subtraction: RET = LHS - RHS
+            // ? BP + 1 + 1 + 1 => TEMPORARY 1 AKA RHS
+            const auto& rhs_v = state->stack[callee_bp + 3];
+            // ? BP + 1 + 1 + 0 => TEMPORARY 0 AKA LHS
+            state->stack[callee_bp] = FastValue {state->stack[callee_bp + 2].div(rhs_v)};
+
+            // ? Point SP to RET temporary.
+            state->sp = callee_bp;
+            state->ip++;
+
+            return true;
+        }
+
+        [[maybe_unused]] bool pie_native_eq(std::any context, int argc) {
+            auto state = std::any_cast<Context*>(context);
+
+            // ? BP = Temp_0 = <callee-reference>
+            const int callee_bp = state->sp - argc;
+
+            // ? Comparison: RET = LHS < RHS
+            // ? BP + 1 + 2 = TEMPORARY 1 AKA RHS
+            const auto& rhs_v = state->stack[callee_bp + 3];
+            // ? BP + 1 + 1 = TEMPORARY 0 AKA LHS
+            state->stack[callee_bp] = FastValue {state->stack[callee_bp + 2].cmp_eq(rhs_v)};
+
+            // ? Point SP to RET temporary.
+            state->sp = callee_bp;
+            state->ip++;
+
+            return true;
+        }
+
+        [[maybe_unused]] bool pie_native_ne(std::any context, int argc) {
+            auto state = std::any_cast<Context*>(context);
+
+            // ? BP = Temp_0 = <callee-reference>
+            const int callee_bp = state->sp - argc;
+
+            // ? Comparison: RET = LHS < RHS
+            // ? BP + 1 + 2 = TEMPORARY 1 AKA RHS
+            const auto& rhs_v = state->stack[callee_bp + 3];
+            // ? BP + 1 + 1 = TEMPORARY 0 AKA LHS
+            state->stack[callee_bp] = FastValue {!state->stack[callee_bp + 2].cmp_eq(rhs_v)};
+
+            // ? Point SP to RET temporary.
+            state->sp = callee_bp;
+            state->ip++;
+
+            return true;
+        }
+
         [[maybe_unused]] bool pie_native_lt(std::any context, int argc) {
             auto state = std::any_cast<Context*>(context);
 
@@ -57,6 +146,38 @@ namespace pie {
             state->stack[callee_bp] = FastValue {state->stack[callee_bp + 2].cmp_lt(rhs_v)};
 
             // ? Point SP to RET temporary.
+            state->sp = callee_bp;
+            state->ip++;
+
+            return true;
+        }
+
+        [[maybe_unused]] bool pie_native_gt(std::any context, int argc) {
+            auto state = std::any_cast<Context*>(context);
+
+            // ? BP = Temp_0 = <callee-reference>
+            const int callee_bp = state->sp - argc;
+
+            // ? Comparison: RET = LHS < RHS
+            // ? BP + 1 + 2 = TEMPORARY 1 AKA RHS
+            const auto& rhs_v = state->stack[callee_bp + 3];
+            // ? BP + 1 + 1 = TEMPORARY 0 AKA LHS
+            state->stack[callee_bp] = FastValue {state->stack[callee_bp + 2].cmp_gt(rhs_v)};
+
+            // ? Point SP to RET temporary.
+            state->sp = callee_bp;
+            state->ip++;
+
+            return true;
+        }
+
+        [[maybe_unused]] bool pie_native_logical_not(std::any context, int argc) {
+            auto state = std::any_cast<Context*>(context);
+
+            // ? BP = Temp_0 = <callee-reference>
+            const int callee_bp = state->sp - argc;
+
+            state->stack[callee_bp] = FastValue {!state->stack[callee_bp + 2].test()};
             state->sp = callee_bp;
             state->ip++;
 
@@ -82,8 +203,8 @@ namespace pie {
 
             std::println("");
 
-            // ? Point SP to RET temporary.
-            state->stack[callee_bp] = FastValue {true};
+            // ? Point SP to RET temporary: print returns last arg
+            state->stack[callee_bp] = all_args.back();
             state->sp = callee_bp;
 
             state->ip++;
@@ -101,7 +222,6 @@ namespace pie {
 
             state->stack[callee_bp] = FastValue {static_cast<FastValue::bigint_type>(now_ms.time_since_epoch().count())};
             state->sp = callee_bp;
-
             state->ip++;
 
             return true;

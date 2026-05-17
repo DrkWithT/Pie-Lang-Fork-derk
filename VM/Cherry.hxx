@@ -65,9 +65,16 @@ namespace pie {
         };
 
         // TODO: move native built-ins to a specific VM source... these are meant for a Fib 20 demo.
+        [[maybe_unused]] bool pie_native_neg(std::any context, int argc);
         [[maybe_unused]] bool pie_native_add(std::any context, int argc);
         [[maybe_unused]] bool pie_native_sub(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_mul(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_div(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_eq(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_ne(std::any context, int argc);
         [[maybe_unused]] bool pie_native_lt(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_gt(std::any context, int argc);
+        [[maybe_unused]] bool pie_native_logical_not(std::any context, int argc);
         [[maybe_unused]] bool pie_native_print(std::any context, int argc);
         [[maybe_unused]] bool pie_native_now(std::any context, int argc);
 

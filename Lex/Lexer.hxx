@@ -1,18 +1,19 @@
 #pragma once
 
+#include <vector>
+#include <cctype>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <unordered_map>
+#include <algorithm>
+#include <sstream>
+#include <fstream>
+
 #include "Token.hxx"
 #include "../Utils/utils.hxx"
 #include "../Parser/Precedence.hxx"
 
-#include <cctype>
-#include <string>
-#include <sstream>
-#include <string_view>
-#include <vector>
-#include <fstream>
-#include <tuple>
-#include <unordered_map>
-#include <algorithm>
 
 
 inline namespace pie {

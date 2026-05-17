@@ -3,7 +3,6 @@
 #include <utility>
 #include <string>
 #include <string_view>
-#include <vector>
 #include <optional>
 #include <expected>
 #include <variant>
@@ -108,12 +107,18 @@ inline namespace pie {
     }
 
     namespace cli {
-        [[nodiscard]] int runExperimental(const std::filesystem::path fname, const bool dump) {
+        [[nodiscard]] constexpr int runExperimental(const std::filesystem::path fname, const bool dump) {
             cherry::Driver driver {cherry::Config {
                 .name = "Cherry (experimental Pie VM)",
                 .local_capacity = 3072,
                 .heap_capacity = 256
             }};
+
+            driver.add_builtin("__builtin_neg", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_neg,
+                "__builtin_neg",
+                1
+            ));
 
             driver.add_builtin("__builtin_add", std::make_unique<vm::BuiltIn>(
                 vm::pie_native_add,
@@ -127,16 +132,52 @@ inline namespace pie {
                 2
             ));
 
+            driver.add_builtin("__builtin_mul", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_mul,
+                "__builtin_mul",
+                2
+            ));
+
+            driver.add_builtin("__builtin_div", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_div,
+                "__builtin_div",
+                2
+            ));
+
+            driver.add_builtin("__builtin_eq", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_eq,
+                "__builtin_eq",
+                2
+            ));
+
+            driver.add_builtin("__builtin_ne", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_ne,
+                "__builtin_ne",
+                2
+            ));
+
             driver.add_builtin("__builtin_lt", std::make_unique<vm::BuiltIn>(
                 vm::pie_native_lt,
                 "__builtin_lt",
                 2
             ));
 
+            driver.add_builtin("__builtin_gt", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_gt,
+                "__builtin_gt",
+                2
+            ));
+
+            driver.add_builtin("__builtin_not", std::make_unique<vm::BuiltIn>(
+                vm::pie_native_logical_not,
+                "__builtin_not",
+                1
+            ));
+
             driver.add_builtin("__builtin_print", std::make_unique<vm::BuiltIn>(
                 vm::pie_native_print,
                 "__builtin_print",
-                1
+                0
             ));
 
             driver.add_builtin("__builtin_now", std::make_unique<vm::BuiltIn>(

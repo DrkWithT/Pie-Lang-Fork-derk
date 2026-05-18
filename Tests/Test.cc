@@ -17,7 +17,146 @@
 // std::print((makeC(1, 2, 3).pack + ...));
 
 
-TEST_CASE("Different Prefix Operators", "[Operator]") {
+
+
+TEST_CASE("Namespaces and Imports", "[Space][Import]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+space g {
+    space sheesh {
+        import Tests/module;
+    };
+};
+
+space wow {
+    use space g::sheesh::testing;
+};
+
+use wow::x;
+x = 10;
+
+print(g::sheesh::testing::x);
+print(wow::x);
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(10
+10)");
+
+
+
+    const auto src2 = R"(
+print = __builtin_print;
+
+space g {
+    space sheesh {
+        import Tests/module;
+    };
+};
+
+space wow {
+    use space g::sheesh::testing;
+};
+
+
+space ok {
+    use space g::sheesh;
+};
+
+g::sheesh::testing::x = 5;
+
+print(g::sheesh::testing::x);
+print(wow::x);
+print(ok::testing::x);
+)";
+
+    REQUIRE(pie::test::run(src2) == R"(5
+5
+5)");
+}
+
+
+
+TEST_CASE("Scoped Namespaces", "[Space]") {
+    const auto src1 = R"(
+{
+    space wow {
+        x = 1;
+    };
+};
+
+wow::x;
+)";
+
+    REQUIRE_THROWS(pie::test::run(src1));
+}
+
+
+TEST_CASE("Valid vs Invalid use space directive", "[Space]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+space interesting {
+
+    space mayo { x = 2; };
+
+    fuck = 1;
+};
+
+space wow { use space interesting; };
+
+print(interesting::mayo::x);
+print(wow::fuck);
+print(wow::mayo::x);
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(2
+1
+2)");
+
+
+    const auto src2 = R"(
+print = __builtin_print;
+
+space interesting { fuck = 1; };
+
+space wow { use space interesting; };
+
+print(mayo::x);
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+}
+
+
+
+TEST_CASE("Names Inside Scopes in Namespaces", "[Var][Space]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+
+space ns {
+    infix(+) add = (a, n) => __builtin_add(a, n);
+
+    x = 1;
+    y = 2;
+
+    space nested {
+        a = 3;
+        b = 4;
+    };
+};
+
+print(ns::nested::a);
+
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(3)");
+}
+
+
+
+TEST_CASE("Different Prefix/Infix Operators", "[Operator]") {
     const auto src1 = R"(
 print = __builtin_print;
 
@@ -33,13 +172,29 @@ print(- - - 2 - - - - - - 5);
 
 
     const auto src2 = R"(
-(infix + = (a, b) => __builtin_add(a, b)) = 5;
-infix + = (a, b) => __builtin_add(a, b);
-
-1 + 2;
+exfix [ : ] = (a)    => __builtin_print("exfix");
+suffix  ] = (a) => __builtin_print("suffix");
 )";
 
     REQUIRE_THROWS(pie::test::run(src2));
+
+
+    const auto src3 = R"(
+print = __builtin_print;
+
+prefix - = (x)    => __builtin_neg(x);
+infix  - = (a, b) => __builtin_sub(a, b);
+
+infix < = (a, b) => __builtin_lt(a, b);
+
+exfix | : | = (x) => __builtin_conditional(x < 0, - x, x);
+
+
+print(| 1 |);
+print(| - 1 - 5 |);
+)";
+
+    REQUIRE(pie::test::run(src3) == "1\n6");
 }
 
 

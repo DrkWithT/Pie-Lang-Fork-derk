@@ -14,7 +14,6 @@
 
 
 #include <cassert>
-#include <cmath>
 #include <cctype>
 
 #include <stdx/tuple.hpp>
@@ -37,6 +36,20 @@ inline namespace pie {
 
 namespace interp {
 
+struct NameSpace {
+    std::string name;
+    std::unordered_map<
+        size_t,
+        std::tuple<
+            value::SpaceRef,
+            value::ValuePtr,
+            type::TypePtr
+        >
+    > members;
+
+    std::unordered_map<std::string, std::shared_ptr<NameSpace>> children;
+};
+
 class Visitor {
 public:
 
@@ -53,19 +66,20 @@ private:
     std::vector<Operators> prefix_op_env;
     std::vector<Operators> op_env;
 
-    std::unordered_map<
-        std::string,
-        std::unordered_map<
-            size_t,
-            std::tuple<
-                value::SpaceRef,
-                value::ValuePtr,
-                type::TypePtr
-            >
-        >
-    > namespaces;
+    // std::unordered_map<
+    //     std::string,
+    //     std::unordered_map<
+    //         size_t,
+    //         std::tuple<
+    //             value::SpaceRef,
+    //             value::ValuePtr,
+    //             type::TypePtr
+    //         >
+    //     >
+    // > namespaces;
+    std::unordered_map<std::string, std::shared_ptr<NameSpace>> global_spaces;
 
-    std::vector<std::string> current_ns;
+    std::vector<NameSpace*> current_space;
 
     // _this_ (or self) context
     std::vector<Object> selves{};
@@ -124,7 +138,7 @@ public:
     }
 
 
-    const std::unique_ptr<expr::Fix>& findPrefixOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
+    const std::shared_ptr<expr::Fix>& findPrefixOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
         for (const auto& ops : std::views::reverse(prefix_op_env)) {
             if (ops.contains(op)) return ops.at(op);
         }
@@ -134,7 +148,7 @@ public:
     }
 
 
-    const std::unique_ptr<expr::Fix>& findOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
+    const std::shared_ptr<expr::Fix>& findOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
         for (const auto& ops : std::views::reverse(op_env)) {
             if (ops.contains(op)) return ops.at(op);
         }
@@ -202,10 +216,10 @@ public:
                 const auto& [named_ref, value_ptr, type_ptr] = e.at(n->ID);
                 const auto& [_, space] = named_ref;
 
-                if (not namespaces.contains(space) or not namespaces[space].contains(n->ID)) 
+                if (not space or not space->members.contains(n->ID)) 
                     util::error();
 
-                return *get<value::ValuePtr>(namespaces[space][n->ID]);
+                return *get<value::ValuePtr>(space->members[n->ID]);
             }
         }
 
@@ -705,22 +719,22 @@ public:
 
 
     Value spaceAccessAssign(const expr::Assignment *ass, expr::SpaceAccess *sa) {
-        const auto space = sa->global ? NSName(sa->spaces) : findNS(sa->spaces);
+        const auto space = findNS(sa->spaces, sa->global);
 
         // should never happen now that there is lexical analysis
-        if (not namespaces.contains(space)) util::error("Namespace `" + space + "` not found!");
-        if (not namespaces[space].contains(sa->name.ID)) util::error("Name `" + sa->name.name + "` with ID [" + std::to_string(sa->name.ID) + "] not found in space " + space);
+        // if (not namespaces.contains(space)) util::error("Namespace `" + space + "` not found!");
+        // if (not namespaces[space].contains(sa->name.ID)) util::error("Name `" + sa->name.name + "` with ID [" + std::to_string(sa->name.ID) + "] not found in space " + space);
 
-        auto [_, __, type] = namespaces[space][sa->name.ID];
+        auto [_, __, type] = space->members[sa->name.ID];
 
         auto value = std::visit(*this, ass->rhs->variant());
 
-        *get<value::ValuePtr>(namespaces[space][sa->name.ID]) = typeCheck(value, std::move(type),
+        *get<value::ValuePtr>(space->members[sa->name.ID]) = typeCheck(value, std::move(type),
             "In assignment: " + ass->stringify() +
             "\nType mis-match! Expected: " + type->text() + ", got: " + typeOf(value)->text()
         );
 
-        return *get<value::ValuePtr>(namespaces[space][sa->name.ID]) = std::move(value);
+        return *get<value::ValuePtr>(space->members[sa->name.ID]) = std::move(value);
 
 
         // auto value = std::visit(*this, ass->rhs->variant());
@@ -744,24 +758,24 @@ public:
                 const auto& [named_ref, value_ptr, type_ptr] = e.at(name->ID);
                 const auto& [_, space] = named_ref;
 
-                if (not namespaces.contains(space) or not namespaces[space].contains(name->ID)) 
+                if (not space or not space->members.contains(name->ID)) 
                     util::error();
 
 
                 // should never happen now that there is lexical analysis
-                if (not namespaces.contains(space)) util::error("Namespace `" + space + "` not found!");
-                if (not namespaces[space].contains(name->ID)) util::error("Name `" + name->name + "` with ID [" + std::to_string(name->ID) + "] not found in space " + space);
+                // if (not namespaces.contains(space)) util::error("Namespace `" + space + "` not found!");
+                // if (not namespaces[space].contains(name->ID)) util::error("Name `" + name->name + "` with ID [" + std::to_string(name->ID) + "] not found in space " + space);
 
-                auto [__, ___, type] = namespaces[space][name->ID];
+                auto [__, ___, type] = space->members[name->ID];
 
                 auto value = std::visit(*this, ass->rhs->variant());
 
-                *get<value::ValuePtr>(namespaces[space][name->ID]) = typeCheck(value, std::move(type),
+                *get<value::ValuePtr>(space->members[name->ID]) = typeCheck(value, std::move(type),
                     "In assignment: " + ass->stringify() +
                     "\nType mis-match! Expected: " + type->text() + ", got: " + typeOf(value)->text()
                 );
 
-                return *get<value::ValuePtr>(namespaces[space][name->ID]) = std::move(value);
+                return *get<value::ValuePtr>(space->members[name->ID]) = std::move(value);
             }
         }
 
@@ -977,51 +991,123 @@ public:
     }
 
 
-    static std::string NSName(const std::vector<std::string>& spaces) {
-        if (spaces.size() == 1) return spaces[0];
+    // static std::string NSName(const std::vector<std::string>& spaces) {
+    //     if (spaces.size() == 1) return spaces[0];
 
-        std::string s = spaces[0];
-        for (const auto& space : spaces | std::views::drop(1))
-            s += "::" + space;
+    //     std::string s = spaces[0];
+    //     for (const auto& space : spaces | std::views::drop(1))
+    //         s += "::" + space;
 
-        return s;
+    //     return s;
+    // }
+
+
+    NameSpace* matchChain(const std::vector<std::string>& names, NameSpace *space) {
+        if (names.empty()) return nullptr;
+        if (names[0] != space->name) return nullptr;
+
+
+        for (const auto& name : names | std::views::drop(1)) {
+            for (const auto& [child_name, child] : space->children) {
+                // if the space is found
+                // move the current down the chain to look for the nested name
+                if (name == child_name) {
+                    space = child.get();
+                    goto keep_going;
+                }
+            }
+            return nullptr;
+
+            keep_going:
+        }
+
+        return space;
     }
 
 
-    std::string findNS(const std::vector<std::string> spaces) {
-        auto fixed_spaces = current_ns;
-
-        // * append_range only available in gcc-15
-        // * GH Actions doesn't support gcc-15
-        #if 0
-        fixed_spaces.append_range(spaces);
-        #else
-        for (const auto& space : spaces) fixed_spaces.push_back(space);
-        #endif
-
-
-        std::string name = NSName(spaces);
-        while (not namespaces.contains(name)) {
-            fixed_spaces.erase(fixed_spaces.end() - spaces.size(), fixed_spaces.end());
-
-            if (fixed_spaces.empty()) util::error("couldn't find space: " + name);
-
-            fixed_spaces.pop_back();
-
-            // * append_range only available in gcc-15
-            // * GH Actions doesn't support gcc-15
-            #if 0
-            fixed_spaces.append_range(spaces);
-            #else
-            for (const auto& space : spaces) fixed_spaces.push_back(space);
-            #endif
-
-            name = NSName(fixed_spaces);
+    NameSpace* findNS(const std::vector<std::string>& names, const bool global_search_only) {
+        if (not global_search_only) {
+            for (const auto space : std::views::reverse(current_space)) {
+                if (const auto s = matchChain(names, space)) return s;
+            }
         }
 
 
-        return name;
+        for (const auto& [_, ns] : global_spaces)
+            if (const auto s = matchChain(names, ns.get()))
+                return s;
+
+
+
+        util::error();
+
+        // auto fixed_spaces = current_space;
+
+        // // * append_range only available in gcc-15
+        // // * GH Actions doesn't support gcc-15
+        // #if 0
+        // fixed_spaces.append_range(spaces);
+        // #else
+        // for (const auto& space : spaces) fixed_spaces.push_back(space);
+        // #endif
+
+
+        // std::string name = NSName(spaces);
+        // while (not namespaces.contains(name)) {
+        //     fixed_spaces.erase(fixed_spaces.end() - spaces.size(), fixed_spaces.end());
+
+        //     if (fixed_spaces.empty()) util::error("couldn't find space: " + name);
+
+        //     fixed_spaces.pop_back();
+
+        //     // * append_range only available in gcc-15
+        //     // * GH Actions doesn't support gcc-15
+        //     #if 0
+        //     fixed_spaces.append_range(spaces);
+        //     #else
+        //     for (const auto& space : spaces) fixed_spaces.push_back(space);
+        //     #endif
+
+        //     name = NSName(fixed_spaces);
+        // }
+
+
+        // return name;
     }
+
+
+
+
+
+    void addSpace(const std::string& name) {
+        NameSpace* ns;
+        if (current_space.empty()) {
+            if (global_spaces.contains(name)) {
+                ns = global_spaces[name].get();
+            }
+            else {
+                ns = (global_spaces[name] = std::make_shared<NameSpace>(name)).get();
+            }
+        }
+        else if (current_space.back()->children.contains(name)) {
+            ns = current_space.back()->children[name].get();
+        }
+        else {
+            ns = (current_space.back()->children[name] = std::make_shared<NameSpace>(name)).get();
+        }
+
+        current_space.push_back(ns);
+
+        scope();
+    }
+
+
+    void popSpace() {
+        unscope();
+        current_space.pop_back();
+    }
+
+
 
 
 
@@ -1030,11 +1116,13 @@ public:
 
 
         ScopeGuard sg{this};
-        current_ns.push_back(ns->name);
-        util::Deferred d{[this] { current_ns.pop_back(); }};
+        addSpace(ns->name);
+        sg.addEnv(current_space.back()->members);
 
-        const auto ns_name = NSName(current_ns); 
-        if (namespaces.contains(ns_name)) sg.addEnv(namespaces.at(ns_name));
+        util::Deferred d{[this] { popSpace(); }};
+
+        // const auto ns_name = NSName(current_space);
+        // if (namespaces.contains(ns_name)) sg.addEnv(namespaces.at(ns_name));
 
         Value value;
         // execute all the expressions in the namespace
@@ -1044,22 +1132,15 @@ public:
 
 
         // then add the variables that resulted from that execution
-        std::unordered_map<size_t, std::tuple<value::SpaceRef, value::ValuePtr, type::TypePtr>> members;
+
         for (auto& [id, val] : env.back().first) {
             auto& [name, value, type] = val;
 
             // members.push_back({expr::Name{name}, std::move(type), std::move(value)});
             // I know this name is not a reference since each class member is responsible for its members
-            members[id] = {{std::move(name).name}, std::move(value), std::move(type)};
+            current_space.back()->members[id] = {{std::move(name)}, std::move(value), std::move(type)};
+            // members[id] = {{std::move(name).name}, std::move(type), std::move(value)};
         }
-
-
-        if (namespaces.contains(ns_name)) {
-            for (const auto& [id, var] : members) {
-                namespaces[ns_name][id] = var;
-            }
-        }
-        else namespaces[ns_name] = std::move(members);
 
 
         return value;
@@ -1070,11 +1151,12 @@ public:
         if (const auto& var = getVar(use->ID); var) return var->first;
 
 
-        const auto space = use->global ? NSName(use->spaces) : findNS(use->spaces);
+        const auto space = findNS(use->spaces, use->global);
 
-        if (not namespaces[space].contains(use->name.ID)) util::error("Name '" + use->name.name + "' not found in space " + space);
+        // lexical scoping must've taken care of that!
+        // if (not space->members.contains(use->name.ID)) util::error("Name `" + use->name.name + "` not found in space " + space->name);
 
-        const auto& value = get<value::ValuePtr>(namespaces.at(space).at(use->name.ID));
+        const auto& value = get<value::ValuePtr>(space->members.at(use->name.ID));
 
         return addVar(use->name.name, use->name.ID, value, type::builtins::Any(), space);
 
@@ -1084,26 +1166,56 @@ public:
     Value operator()(const expr::UseSpace *use) {
         if (const auto& var = getVar(use->ID); var) return var->first;
 
-        const auto space = use->global ? NSName(use->spaces) : findNS(use->spaces);
+        const auto space = findNS(use->spaces, use->global);
 
-        if (not namespaces.contains(space)) util::error("space '" + space + "' not found!");
+        // lexical scoping must've taken care of that
+        // if (not namespaces.contains(space)) util::error("space '" + space + "' not found!");
 
         Value v;
-        for (const auto& [ID, t_v] : namespaces.at(space)) {
+        for (const auto& [ID, t_v] : space->members) {
             const auto& [name, value, type] = t_v;
 
             v = *value;
-            // util::error();
-            addVar(name.name, ID, value, type::builtins::Any(), space); // todo will figure something out for mutability, FUCK
+            addVar(name.name, ID, value, type::builtins::Any(), space);
         }
 
 
-        for (const auto& [fullname, shortname] : use->children) {
-            namespaces.insert({shortname, namespaces[fullname]});
+        if (current_space.empty()) {
+            for (const auto& [name, space] : space->children) {
+                global_spaces[name] = space;
+            }
         }
+        else for (const auto& [name, space] : space->children) {
+            current_space.back()->children[name] = space;
+        }
+
+
 
         return v;
-        // return *get<2>(env[use->last_item_id]);
+
+    }
+
+
+
+    void addNamespaces(
+        std::unordered_map<std::string, std::shared_ptr<NameSpace>>& spaces,
+        const std::unordered_map<std::string, std::shared_ptr<NameSpace>>& new_spaces
+    ) {
+        for (const auto& [new_space_name, new_space] : new_spaces) {
+            if (
+                auto iter = std::ranges::find_if(
+                    spaces,
+                    [&new_space_name] (const auto& space) { return space.first == new_space_name; }
+                );
+                iter != spaces.cend()
+            ) {
+                addNamespaces((*iter).second->children, new_space->children);
+            }
+            // in this case, just push the new space with all its children
+            else spaces[new_space_name] = new_space;
+
+            // else spaces.push_back(new_space);
+        }
     }
 
 
@@ -1134,11 +1246,7 @@ public:
 
 
 
-        for (auto& [space, names] : v.namespaces) {
-            for (auto& [id, val] : names) {
-                namespaces[space][id] = std::move(val);
-            }
-        }
+        addNamespaces(current_space.empty() ? global_spaces : current_space.back()->children, v.global_spaces);
 
         return value;
     }
@@ -1147,15 +1255,15 @@ public:
     Value operator()(const expr::SpaceAccess *sa) {
         if (const auto& var = getVar(sa->ID); var) return var->first;
 
-        const auto space = sa->global ? NSName(sa->spaces) : findNS(sa->spaces);
+        const auto space = findNS(sa->spaces, sa->global);
 
-        if (not namespaces[space].contains(sa->name.ID)) util::error("Name `" + sa->name.name + "` with ID [" + std::to_string(sa->name.ID) + "] not found in space " + space);
+        // lexical scopign must've taken care of that!
+        // if (not namespaces[space].contains(sa->name.ID)) util::error("Name `" + sa->name.name + "` with ID [" + std::to_string(sa->name.ID) + "] not found in space " + space);
 
 
-        return *get<value::ValuePtr>(namespaces[space][sa->name.ID]);
-
-        // return *get<1>(env[sa->name.ID]);
+        return *get<value::ValuePtr>(space->members[sa->name.ID]);
     }
+
 
 
     bool match(const Value& value, const expr::Match::Case::Pattern& pattern) {
@@ -3877,7 +3985,7 @@ public:
         const size_t ID,
         const ValuePtr& v,
         const type::TypePtr& t = type::builtins::Any(),
-        const std::string& space = ""
+        NameSpace* space = nullptr
     ) {
         // if (const auto cls = type::isClass(t)) {
         //     auto obj = get<value::Object>(v);
@@ -4001,7 +4109,7 @@ public:
         for (const auto& [ID, v] : e) {
             const auto& [name, value, type] = v;
 
-            std::println("[{}] {}::{}: {} = {}", ID, name.space, name.name, type->text(), stringify(*value));
+            std::println("[{}] {}::{}: {} = {}", ID, name.space->name, name.name, type->text(), stringify(*value));
         }
     }
 
@@ -4012,7 +4120,7 @@ public:
         for (const auto& [ID, v] : e) {
             const auto& [name, value, type] = v;
 
-            std::println("[{}] {}: {} = {}", ID, name.space, name.name, type->text(), stringify(*value));
+            std::println("[{}] {}: {} = {}", ID, name.space->name, name.name, type->text(), stringify(*value));
         }
     }
 };

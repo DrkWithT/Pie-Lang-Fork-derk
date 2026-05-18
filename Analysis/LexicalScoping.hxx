@@ -36,7 +36,8 @@ struct NameSpace {
     std::string name;
 
     NameSpace *parent = nullptr;
-    std::vector<std::shared_ptr<NameSpace>> children;
+    std::unordered_map<std::string, size_t> members;
+    std::unordered_map<std::string, std::shared_ptr<NameSpace>> children;
 };
 
 
@@ -44,12 +45,26 @@ class LexicalScoping {
 
     size_t variable_index;
 
-    // scopes
-    std::vector<std::unordered_map<std::string, size_t>> env;
 
-    std::unordered_map<std::string, std::unordered_map<std::string, size_t>> namespaces;
-    std::string space_dir;
-    std::vector<std::shared_ptr<NameSpace>> global_spaces;
+    struct Env {
+        std::unordered_map<std::string, size_t> vars;
+        std::unordered_map<std::string, std::shared_ptr<NameSpace>> spaces;
+    };
+
+    enum class EnvTag {
+        SCOPE,
+        SPACE,
+    };
+
+
+    // scopes
+    std::vector<std::pair<Env, EnvTag>> env;
+
+    // std::unordered_map<std::string, std::unordered_map<std::string, size_t>> namespaces;
+
+    // std::string space_dir;
+    std::vector<NameSpace*> current_space;
+    // std::unordered_map<std::string, std::shared_ptr<NameSpace>> global_spaces;
 
 
     bool in_loop = false;
@@ -59,7 +74,7 @@ public:
     std::vector<size_t> indeces;
 
     LexicalScoping(const size_t index = 0) : variable_index(index) {
-        env.push_back({});
+        env.push_back({{}, EnvTag::SCOPE});
 
         const auto builtins = {
             "Any",
@@ -113,34 +128,10 @@ public:
 
 
         for (const auto builtin : builtins)
-            env[0][builtin] = variable_index++;
+            env[0].first.vars[builtin] = variable_index++;
     }
 
 
-
-    // LexicalScoping(const LexicalScoping& other)
-    // : variable_index{other.variable_index},
-    //   env{other.env},
-    //   namespaces{other.namespaces},
-    //   space_dir{other.space_dir},
-    //   in_loop{other.in_loop}
-    // {
-    //     for (const auto& ns : other.global_spaces)
-    //         global_spaces.push_back(std::make_shared<NameSpace>(*ns));
-    // }
-
-    // LexicalScoping& operator=(const LexicalScoping& other) {
-    //     variable_index = other.variable_index;
-    //     env = other.env;
-    //     namespaces = other.namespaces;
-    //     space_dir = other.space_dir;
-    //     in_loop = other.in_loop;
-
-    //     for (const auto& ns : other.global_spaces)
-    //         global_spaces.push_back(std::make_shared<NameSpace>(*ns));
-
-    //     return *this;
-    // }
 
 
     // void operator()(auto *node) { }
@@ -194,7 +185,8 @@ public:
         const auto space = findSpace(acc->spaces, acc->global);
         if (not space) util::error("Namespace `" + stringify(acc->spaces) + "` is expression `" + ass->stringify() + "` was not found!");
 
-        for (const auto& [var, id] : namespaces[fullName(space)]) {
+        // for (const auto& [var, id] : namespaces[fullName(space)])
+        for (const auto& [var, id] : space->members) {
             if (var == acc->name.name) {
                 acc->name.ID = id;
                 return;
@@ -569,28 +561,41 @@ public:
             std::visit(v, std::move(expr)->variant());
 
 
-        for (const auto& [ns, space] : v.namespaces) {
-            for (const auto& [name, id] : space) {
-                namespaces[ns][name] = id;
-            }
-        }
+        // for (const auto& [ns, space] : v.global_spaces) {
+        //     for (const auto& [name, id] : space->members) {
+        //         namespaces[ns][name] = id;
+        //     }
+        // }
 
-        addNamespaces(global_spaces, v.global_spaces);
+
+        // addNamespaces(current_space.empty() ? global_spaces : current_space.back()->children, v.global_spaces);
+
+        addNamespaces(env.back().first.spaces, v.env.front().first.spaces);
+
 
         variable_index = v.variable_index;
     }
 
 
-    void operator()(expr::Namespace *ns) {
-        if (auto id = findVar(ns->stringify())) {
-            ns->ID = *id;
+    void operator()(expr::Namespace *n) {
+        if (auto id = findVar(n->stringify())) {
+            n->ID = *id;
             return;
         }
 
-        addSpace(ns->name);
+        // ScopeGuard sg{this};
+        addSpace(n->name);
 
-        for (const auto& expr : ns->space)
+        for (const auto& expr : n->space)
             std::visit(*this, expr->variant());
+
+
+
+        // const auto ns = getNamespaceAt(space_dir, global_spaces);
+
+        for (auto& [name, id] : env.back().first.vars) {
+            current_space.back()->members[std::move(name)] = id;
+        }
 
         popSpace();
     }
@@ -603,29 +608,59 @@ public:
         }
 
 
-        auto space = findSpace(use->spaces, use->global);
-        if (not space) util::error();
+        auto ns = findSpace(use->spaces, use->global);
+        if (not ns) util::error();
 
-        for (const auto& [var, id] : namespaces[fullName(space)]) {
+        // for (const auto& [var, id] : namespaces[fullName(space)])
+        for (const auto& [var, id] : ns->members) {
             addVar(var, id);
             use->last_item_id = id;
         }
 
-        // pull child namespaces into the parent's
-        if (space->parent) {
-            for (auto& child : space->children) {
-                space->parent->children.push_back(child);
-                use->children.push_back({fullName(child.get()), child->name});
-            }
-        }
-        else {
-            for (auto& child : space->children) {
-                global_spaces.push_back(child);
-                use->children.push_back({fullName(child.get()), child->name});
-            }
+
+        for (const auto& [name, id] : ns->members) {
+            env.back().first.vars[name] = id;
         }
 
 
+        for (const auto& [name, space] : ns->children){
+            if (not env.back().first.spaces.contains(name)) {
+                env.back().first.spaces[name] = space;
+            }
+            else for (const auto& [member_name, member_id] : space->members) {
+                env.back().first.spaces[name]->members[member_name] = member_id;
+            }
+
+            if (env.back().second == EnvTag::SPACE) {
+                if (not current_space.back()->children.contains(name)) {
+                    current_space.back()->children[name] = space;
+                }
+                else for (const auto& [member_name, member_id] : space->members) {
+                    current_space.back()->children[name]->members[member_name] = member_id;
+                }
+            }
+
+        }
+
+
+        // if (current_space.empty()) {
+        //     for (const auto& [name, id] : space->members) {
+        //         env.back().first[name] = id;
+        //     }
+
+        //     for (const auto& [name, space] : space->children){
+        //         global_spaces[name] = space;
+        //     }
+        // }
+        // else {
+        //     for (const auto& [name, id] : space->members) {
+        //         current_space.back()->members[name] = id;
+        //     }
+
+        //     for (const auto& [name, space] : space->children) {
+        //         current_space.back()->children[name] = space;
+        //     }
+        // }
     }
 
     void operator()(expr::Use *use) {
@@ -638,7 +673,8 @@ public:
         const auto space = findSpace(use->spaces, use->global);
         if (not space) util::error();
 
-        for (const auto& [var, id] : namespaces[fullName(space)]) {
+        // for (const auto& [var, id] : namespaces[fullName(space)]) {
+        for (const auto& [var, id] : space->members) {
             if (var == use->name.name) {
                 use->name.ID = id;
                 addVar(var, id);
@@ -655,14 +691,15 @@ public:
 
         if (not space) util::error();
 
-        for (const auto& [var, id] : namespaces[fullName(space)]) {
+        // for (const auto& [var, id] : namespaces[fullName(space)]) {
+        for (const auto& [var, id] : space->members) {
             if (var == acc->name.name) {
                 acc->name.ID = id;
                 return;
             }
         }
 
-        util::error<except::NameLookup>("Name " + acc->name.name + " not found in space " + stringify(acc->spaces));
+        util::error<except::NameLookup>("Name `" + acc->name.name + "` not found in space " + stringify(acc->spaces));
     }
 
 
@@ -805,92 +842,73 @@ public:
 
 
 
-    static NameSpace* getNamespaceAt(
-        const std::string& dir,
-        const std::vector<std::shared_ptr<NameSpace>>& spaces
-    ) {
-        if (dir.empty()) return nullptr;
+    // static NameSpace* getNamespaceAt(
+    //     const std::string& dir,
+    //     const std::unordered_map<std::string, std::shared_ptr<NameSpace>>& spaces
+    // ) {
+    //     if (dir.empty()) return nullptr;
 
-        const size_t ind = dir[0] - 0X30;
+    //     const size_t ind = dir[0] - 0X30;
 
-        return dir.size() == 1 ?
-            spaces[ind].get()  :
-            getNamespaceAt(dir.substr(0, dir.size() - 1), spaces[ind]->children);
-    }
+    //     return dir.size() == 1 ?
+    //         spaces[ind].get()  :
+    //         getNamespaceAt(dir.substr(0, dir.size() - 1), spaces[ind]->children);
+    // }
 
-    std::string fullName(const NameSpace* ns) const {
-        std::vector<std::string> spaces;
 
-        for (auto ptr = ns; ptr; ptr = ptr->parent)
-            spaces.push_back(ptr->name);
+    // std::string fullName(const NameSpace* ns) const {
+    //     std::vector<std::string> spaces;
 
-        std::ranges::reverse(spaces);
+    //     for (auto ptr = ns; ptr; ptr = ptr->parent)
+    //         spaces.push_back(ptr->name);
 
-        std::string name = spaces[0];
+    //     std::ranges::reverse(spaces);
 
-        for (const auto& s : spaces | std::views::drop(1))
-            name += "::" + s;
+    //     std::string name = spaces[0];
 
-        return name;
-    }
+    //     for (const auto& s : spaces | std::views::drop(1))
+    //         name += "::" + s;
+
+    //     return name;
+    // }
 
 
     void addSpace(const std::string& name) {
-        const auto parent = getNamespaceAt(space_dir, global_spaces);
+        std::shared_ptr<NameSpace> ns;
 
-        if (not parent) {
-            global_spaces.push_back({std::make_shared<NameSpace>(std::move(name))});
-            space_dir += std::to_string(global_spaces.size() - 1);
-            namespaces[name];
-            return;
-        }
-
-
-        // if it already exists, then direct to it
-        for (size_t i{}; const auto& ns : parent->children) {
-            if (ns->name == name) {
-                space_dir += std::to_string(i);
-                return;
+        if (env.back().second == EnvTag::SPACE) {
+            if (current_space.back()->children.contains(name)) {
+                ns = current_space.back()->children[name];
             }
-            ++i;
+            else {
+                ns = current_space.back()->children[name] = env.back().first.spaces[name] = std::make_shared<NameSpace>(name);
+            }
+        }
+        else {
+            if (env.back().first.spaces.contains(name)) {
+                ns = env.back().first.spaces[name];
+            }
+            else {
+                ns = env.back().first.spaces[name] = std::make_shared<NameSpace>(name);
+            }
         }
 
-        // not found, add it
-        parent->children.push_back({std::make_unique<NameSpace>(name)});
-        parent->children.back()->parent = parent;
 
-
-        space_dir += std::to_string(parent->children.size() - 1);
-
-        const auto space = getNamespaceAt(space_dir, global_spaces);
-        const auto fullname = fullName(space);
-        namespaces[fullname]; // inserts an empty namespace in case a lookup happens, it needs to find a namespace even if its empty
+        current_space.push_back(ns.get());
+        scope(ns);
     }
 
 
-    void popSpace() { space_dir.pop_back(); }
+    void popSpace() {
+        // if (env[env.size() - 2].second == EnvTag::SPACE) {
+        //     for (auto& [name, space] : env.back().first.spaces) {
 
+        //     }
+        // }
 
-    // NameSpace* findSpace(const std::string& name, bool global_search = false) {
-
-    //     if (not global_search) {
-    //         const auto *space = getNamespaceAt(space_dir, global_spaces);
-
-    //         while (space) {
-    //             for (const auto& ns : space->children)
-    //                 if (ns->name == name) return ns.get();
-
-    //             space = space->parent;
-    //         }
-    //     }
-
-
-    //     for (const auto& ns : global_spaces)
-    //         if (ns->name == name) return ns.get();
-
-
-    //     util::error();
-    // }
+        unscope();
+        current_space.pop_back();
+    }
 
 
 
@@ -900,10 +918,10 @@ public:
 
 
         for (const auto& name : names | std::views::drop(1)) {
-            for (const auto& child : space->children) {
+            for (const auto& [child_name, child] : space->children) {
                 // if the space is found
                 // move the current down the chain to look for the nested name
-                if (name == child->name) {
+                if (name == child_name) {
                     space = child.get();
                     goto keep_going;
                 }
@@ -920,23 +938,16 @@ public:
     // ideally, should be called findSpaces!
     NameSpace* findSpace(const std::vector<std::string>& names, const bool global_search_only = false) {
         if (not global_search_only) {
-            auto space = getNamespaceAt(space_dir, global_spaces);
-
-            while (space) {
-                // for (const auto& child : space->children) // !!this could be a bug. Why search the children?
-                //     if (matchChain(names, child.get())) return child.get();
-
+            for (const auto space : std::views::reverse(current_space)) {
                 if (const auto s = matchChain(names, space)) return s;
-
-                // if not found, then move up the chain and look again
-                space = space->parent;
             }
         }
 
 
-        for (const auto& ns : global_spaces)
-            if (auto s = matchChain(names, ns.get()))
+        for (const auto& [_, ns] : env.front().first.spaces) {
+            if (const auto s = matchChain(names, ns.get()))
                 return s;
+        }
 
 
 
@@ -944,31 +955,27 @@ public:
     }
 
     void addVar(std::string name, const size_t index) {
-        if (space_dir.empty()) env.back()[std::move(name)] = index;
-        else {
-            const auto space = getNamespaceAt(space_dir, global_spaces);
-            namespaces[fullName(space)][std::move(name)] = index;
-        }
+        env.back().first.vars[std::move(name)] = index;
+        // if (space_dir.empty()) 
+        // else {
+        //     const auto space = getNamespaceAt(space_dir, global_spaces);
+        //     namespaces[fullName(space)][std::move(name)] = index;
+        // }
     }
 
 
     std::optional<size_t> findVarInSpace(const std::string& name) const {
-        const auto* space = getNamespaceAt(space_dir, global_spaces);
 
-        while (space) {
-            const auto fullname = fullName(space);
+        for (const auto space : std::views::reverse(current_space)) {
 
-            if (namespaces.at(fullname).contains(name))
-                return namespaces.at(fullname).at(name);
+            if (space->members.contains(name))
+                return space->members.at(name);
 
             // for (const auto& child : space->children) {
             //     const auto fullname = fullName(child.get());
             //     if (namespaces.at(fullname).contains(name))
             //         return namespaces.at(fullname).at(name);
             // }
-
-            // if not found, then move up the chain and look again
-            space = space->parent;
         }
 
         return {};
@@ -976,21 +983,35 @@ public:
 
 
     void addNamespaces(
-        std::vector<std::shared_ptr<NameSpace>>& spaces,
-        const std::vector<std::shared_ptr<NameSpace>>& new_spaces
+        std::unordered_map<std::string, std::shared_ptr<NameSpace>>& spaces,
+        const std::unordered_map<std::string, std::shared_ptr<NameSpace>>& new_spaces
     ) {
-        for (const auto& new_space : new_spaces) {
-            if (
-                auto iter = std::ranges::find_if(
-                    spaces,
-                    [&new_space] (const auto& space) { return space->name == new_space->name; }
-                );
-                iter != spaces.cend()
-            ) {
-                addNamespaces((*iter)->children, new_space->children);
+        for (const auto& [new_space_name, new_space] : new_spaces) {
+            if (spaces.contains(new_space_name)) {
+                for (const auto& [name, id] : spaces[new_space_name]->members) {
+                    spaces[new_space_name]->members[name] = id;
+                }
+
+                addNamespaces(spaces[new_space_name]->children, new_space->children);
             }
             // in this case, just push the new space with all its children
-            else spaces.push_back(new_space);
+            else {
+                spaces[new_space_name] = new_space;
+            }
+        }
+
+
+        if (env.back().second == EnvTag::SPACE) {
+            for (const auto& [new_space_name, new_space] : new_spaces) {
+                if (current_space.back()->children.contains(new_space_name)) {
+                    for (const auto& [name, id] : new_space->children[new_space_name]->members) {
+                        current_space.back()->members[name] = id;
+                    }
+                }
+                else {
+                    current_space.back()->children[new_space_name] = new_space;
+                }
+            }
         }
     }
 
@@ -998,7 +1019,7 @@ public:
     [[nodiscard]] std::optional<size_t> findVar(const std::string& name) const {
         if (name.empty()) return {}; // no reason to search
 
-        if (not space_dir.empty()) {
+        if (not current_space.empty()) {
             if (const auto id = findVarInSpace(name); id) return id;
         }
 
@@ -1007,30 +1028,34 @@ public:
         // since once the name was found, that was enough proof that it was lexically available
         // now we need to assign IDs, which means a reverse traversal is needed
         for (const auto& e : std::views::reverse(env))
-            if (e.contains(name)) return e.at(name);
+            if (e.first.vars.contains(name)) return e.first.vars.at(name);
 
 
         return {};
     }
 
 
+    void scope() {
+        env.push_back({{}, EnvTag::SCOPE});
+    }
+
+
+    void scope(const std::shared_ptr<NameSpace>& space) {
+        env.push_back({{}, EnvTag::SPACE});
+
+        env.back().first.spaces[space->name] = space;
+    }
+
+
+    void unscope() {
+        env.pop_back();
+    }
 
     struct ScopeGuard {
         LexicalScoping* that;
-         ScopeGuard(LexicalScoping* t) : that{t} { that->env.emplace_back(); }
-        ~ScopeGuard() { that->env.pop_back(); }
+         ScopeGuard(LexicalScoping* t) : that{t} { that->scope(); }
+        ~ScopeGuard() { that->unscope(); }
     };
-
-
-
-    void printSpaces() {
-        for (const auto& [spacename, space] : namespaces) {
-            std::clog << "space " << spacename << std::endl;
-            for (const auto& [var, id] : space) {
-                std::clog << "var: " << var << " [" << id << "]\n";
-            }
-        }
-    }
 };
 
 

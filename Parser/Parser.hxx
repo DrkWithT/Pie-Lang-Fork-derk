@@ -3,6 +3,7 @@
 #include <print>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 #include <tuple>
@@ -25,6 +26,17 @@
 inline namespace pie {
 
 inline namespace parse {
+
+
+struct NamespaceTree {
+    std::string name;
+    
+    Operators prefix_ops;
+    Operators ops;
+
+    std::unordered_map<std::string, std::unique_ptr<NamespaceTree>> children;
+};
+
 
 class Parser {
     Tokens tokens;
@@ -52,61 +64,8 @@ class Parser {
     };
 
 
-    bool envContains(const std::string& op) const {
-        for (const auto &e : env)
-            if (e.contains(op)) return true;
-
-        return false;
-    }
-
-    bool opsContain(const std::string& op) const {
-        for (const auto& ops : op_env)
-            if (ops.contains(op)) return true;
-
-        return false;
-    }
-
-    bool prefixOpsContain(const std::string& op) const {
-        for (const auto &e : prefix_op_env)
-            if (e.contains(op)) return true;
-
-        return false;
-    }
-
-
-    const std::unique_ptr<expr::Fix>& findOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
-        for (const auto& ops : std::views::reverse(op_env))
-            if (ops.contains(op)) return ops.at(op);
-
-        util::error(loc);
-    }
-
-
-    const std::unique_ptr<expr::Fix>& findPrefixOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
-        for (const auto& ops : std::views::reverse(prefix_op_env)) {
-            if (ops.contains(op)) return ops.at(op);
-        }
-
-        util::error(loc);
-    }
-
-
-    Operators consolidateOps() const {
-        Operators consolidated;
-        for (const auto& operators : op_env) {
-            for (const auto& [name, op] : operators) {
-                consolidated[name] = op->clone();
-            }
-        }
-
-        for (const auto& operators : prefix_op_env) {
-            for (const auto& [name, op] : operators) {
-                consolidated[name] = op->clone();
-            }
-        }
-
-        return consolidated;
-    }
+    std::unordered_map<std::string, std::unique_ptr<NamespaceTree>> global_spaces;
+    std::vector<NamespaceTree*> current_space;
 
 public:
 
@@ -146,7 +105,7 @@ public:
 
                     // most operators are 1 or 2 chars long
                     if (t.text.length() > 2) msg += " Did you, perhaps, forget a ';' on the previous line?";
-                    util::error(msg + '\n' + expressions.back()->stringify());
+                    util::error(msg); //  + '\n' + expressions.back()->stringify()
                 }
                 util::expected(TokenKind::SEMI, t);
             }
@@ -201,23 +160,7 @@ public:
                 // return std::make_shared<expr::Continue>(parseExpr());
 
             case NAMESPACE: return nameSpace();
-            case USE: {
-                const bool  using_space  = match(NAMESPACE);
-                const bool global_access = match(SCOPE_RESOLVE);
-
-                std::vector<std::string> spaces = {consume(NAME).text};
-                while (match(SCOPE_RESOLVE)) spaces.push_back(consume(NAME).text);
-
-                if (not using_space) {
-                    std::string name = spaces.back();
-                    spaces.pop_back();
-
-                    return std::make_shared<expr::Use     >(global_access, std::move(spaces), std::move(name));
-                }
-                else
-                    return std::make_shared<expr::UseSpace>(global_access, std::move(spaces));
-            }
-
+            case USE: return use();
 
             case IMPORT: {
                 std::filesystem::path path = root;
@@ -659,7 +602,9 @@ public:
     expr::ExprPtr nameSpace() {
         using enum TokenKind;
 
-        std::string name = parseExpr()->stringify();
+        std::string name = consume(NAME).text;
+
+        enterNamespace(name);
 
         consume(L_BRACE);
 
@@ -670,7 +615,34 @@ public:
             consume(SEMI);
         }
 
+
+        current_space.back()->prefix_ops = std::move(prefix_op_env).back();
+        current_space.back()->       ops = std::move(       op_env).back();
+
+
+        exitNamespace();
+
         return std::make_shared<expr::Namespace>(std::move(name), std::move(space));
+    }
+
+
+    expr::ExprPtr use() {
+        using enum TokenKind;
+
+        const bool  using_space  = match(NAMESPACE);
+        const bool global_access = match(SCOPE_RESOLVE);
+
+        std::vector<std::string> spaces = {consume(NAME).text};
+        while (match(SCOPE_RESOLVE)) spaces.push_back(consume(NAME).text);
+
+        if (not using_space) {
+            std::string name = spaces.back();
+            spaces.pop_back();
+
+            return std::make_shared<expr::Use     >(global_access, std::move(spaces), std::move(name));
+        }
+        else
+            return std::make_shared<expr::UseSpace>(global_access, std::move(spaces));
     }
 
 
@@ -1058,7 +1030,15 @@ public:
 
     expr::ExprPtr backticks() {
         util::Deferred d{[this] { consume(TokenKind::BACKTICK); }};
-        return std::make_shared<expr::Syntax>(parseExpr());
+
+
+        auto syn = std::make_shared<expr::Syntax>(parseExpr());
+
+        if (auto fix = analysis::exprContains<expr::Fix>(syn->expr))
+            unAddOp(fix);
+
+
+        return syn;
     }
 
 
@@ -1154,7 +1134,7 @@ public:
             }
 
             case TokenKind::EXFIX:{
-                const auto& op = dynamic_cast<const expr::Exfix*>(findOp(token.text).get());
+                auto op = dynamic_cast<const expr::Exfix*>(findPrefixOp(token.text).get());
 
                 auto ret = std::make_shared<expr::CircumOp>(op->name, op->name2, parseExpr());
 
@@ -1164,7 +1144,7 @@ public:
             }
 
             case TokenKind::MIXFIX: {
-                const auto& op = dynamic_cast<const expr::Operator*>(findPrefixOp(token.text).get());
+                auto op = dynamic_cast<const expr::Operator*>(findPrefixOp(token.text).get());
                 if (not op->op_pos[0]) util::error("Operator '" + token.text + "' has to come after an expression!");
 
                 const int prec = prec::calculate(op->high, op->low, consolidateOps());
@@ -1217,10 +1197,8 @@ public:
 
                     // op->funcs.push_back(std::move(func));
 
-                    if (op->type() != PREFIX) {
-                        std::println(std::cerr, "Overload set for operator `{}` must have the same operator type:", name);
-                        util::expected(op->type(), PREFIX);
-                    }
+                    if (op->type() != PREFIX)
+                        util::error("Overload set for operator `" + name + "` must have the same operator type!");
 
                     if (op->high != high or op->low != low)
                         util::error("Overloaded set of operator `" + name + "` must all have the same precedence!");
@@ -1234,10 +1212,8 @@ public:
 
                     // op->funcs.push_back(std::move(func));
 
-                    if (op->type() != kind) {
-                        std::println(std::cerr, "Overload set for operator `{}` must have the same operator type:", name);
-                        util::expected(op->type(), kind);
-                    }
+                    if (op->type() != kind)
+                        util::error("Overload set for operator `" + name + "` must have the same operator type!");
 
                     if (op->high != high or op->low != low)
                         util::error("Overloaded set of operator `" + name + "` must all have the same precedence!");
@@ -1353,7 +1329,7 @@ public:
 
 
         if (prefixOpsContain(name1)) {
-            const auto& op = findOp(name1);
+            const auto& op = findPrefixOp(name1);
             // op->funcs.push_back(std::move(func));
 
             if (op->type() != TokenKind::EXFIX) {
@@ -1364,7 +1340,7 @@ public:
             auto ex = dynamic_cast<const expr::Exfix*>(op.get());
 
             if (ex->name != name1 or ex->name2 != name2) {
-                util::error("Overload set of exfix operator must all have the same operator name '" + ex->name + ':' + ex->name2 + '\'');
+                util::error("Overload set of exfix operator must all have the same operator name `" + ex->name + " : " + ex->name2 + '`');
             }
 
             p->funcs.push_back(func);
@@ -1373,6 +1349,12 @@ public:
             // return std::make_shared<expr::Exfix>(*ex);
         }
 
+        if (opsContain(name2)) {
+            std::println(std::cerr, "Overload set for operator '{}:{}' must have the same operator type:", name1, name2);
+            util::expected(findOp(name2)->type(), TokenKind::EXFIX);
+        }
+
+
         p->funcs.push_back(func);
         if (envContains(p->stringify())) return p;
 
@@ -1380,8 +1362,9 @@ public:
         prefix_op_env.back()[name1] = p->clone();
         prefix_op_env.back()[name1]->funcs.pop_back(); // probably not needed!
 
-        prefix_op_env.back()[name2] = p->clone(); //* maybe? //* maybe not...? idk
-        prefix_op_env.back()[name2]->funcs.pop_back(); // probably not needed!
+        // interesting idea
+        op_env.back()[name2] = p->clone(); //* maybe? //* maybe not...? idk
+        op_env.back()[name2]->funcs.pop_back(); // probably not needed!
 
         // pushing back after cloning so that the op table doesn't contain the closure
         // p->funcs.push_back(std::move(func));
@@ -1671,6 +1654,97 @@ public:
            env.pop_back();
         op_env.pop_back();
     }
+
+
+    void enterNamespace(const std::string& name) {
+        // global_spaces.insert({name, std::make_unique<NamespaceTree>(name)});
+
+        NamespaceTree* ns;
+        if (current_space.empty()) {
+            if (global_spaces.contains(name)) {
+                ns = global_spaces[name].get();
+            }
+            else {
+                ns = (global_spaces[name] = std::make_unique<NamespaceTree>(name)).get();
+            }
+        }
+        else if (current_space.back()->children.contains(name)) {
+            ns = current_space.back()->children[name].get();
+        }
+        else {
+            ns = (current_space.back()->children[name] = std::make_unique<NamespaceTree>(name)).get();
+        }
+
+
+        current_space.push_back(ns);
+        // current_space.push_back(global_spaces.at(name).get());
+
+        scope();
+    }
+
+    void exitNamespace() {
+        unscope();
+        current_space.pop_back();
+    }
+
+
+    bool envContains(const std::string& op) const {
+        for (const auto &e : env)
+            if (e.contains(op)) return true;
+
+        return false;
+    }
+
+    bool opsContain(const std::string& op) const {
+        for (const auto& ops : op_env)
+            if (ops.contains(op)) return true;
+
+        return false;
+    }
+
+    bool prefixOpsContain(const std::string& op) const {
+        for (const auto &e : prefix_op_env)
+            if (e.contains(op)) return true;
+
+        return false;
+    }
+
+
+
+    // todo: remove these 2 functions and make the previous 2 return the pointer or null
+    const std::shared_ptr<expr::Fix>& findOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
+        for (const auto& ops : std::views::reverse(op_env))
+            if (ops.contains(op)) return ops.at(op);
+
+        util::error(loc);
+    }
+
+    const std::shared_ptr<expr::Fix>& findPrefixOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
+        for (const auto& ops : std::views::reverse(prefix_op_env)) {
+            if (ops.contains(op)) return ops.at(op);
+        }
+
+        util::error(loc);
+    }
+
+
+    Operators consolidateOps() const {
+        Operators consolidated;
+        for (const auto& operators : op_env) {
+            for (const auto& [name, op] : operators) {
+                consolidated[name] = op->clone();
+            }
+        }
+
+        for (const auto& operators : prefix_op_env) {
+            for (const auto& [name, op] : operators) {
+                consolidated[name] = op->clone();
+            }
+        }
+
+        return consolidated;
+    }
+
 
 };
 

@@ -21,6 +21,8 @@
 
 inline namespace pie {
 
+namespace interp { struct NameSpace; }
+
 inline namespace value {
     struct Value;
     using ValuePtr = std::shared_ptr<Value>;
@@ -30,9 +32,9 @@ inline namespace value {
 
     struct SpaceRef {
         std::string name;
-        std::string space = "";
+        interp::NameSpace* space = nullptr;
 
-        bool isRef() const { return not space.empty(); }
+        bool isRef() const { return space != nullptr; }
     };
 
     using Environment = std::unordered_map<
@@ -46,7 +48,7 @@ inline namespace value {
 }
 
 namespace expr { struct Fix; }
-using Operators  = std::unordered_map<std::string, std::unique_ptr<expr::Fix>>;
+using Operators  = std::unordered_map<std::string, std::shared_ptr<expr::Fix>>;
 
 
 

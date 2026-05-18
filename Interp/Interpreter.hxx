@@ -3031,7 +3031,7 @@ public:
                 }
             }
 
-            default:
+            default:;
         }
 
         return *func;

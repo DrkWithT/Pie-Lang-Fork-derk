@@ -22,6 +22,7 @@
 - [Match Expressions](#match-expressions)
 - [Namespaces](#namespaces)
 - [Scopes](#scopes)
+- [Import System](#import-system)
 - [Operators](#operators)
 - [Overloading](#overloading)
 - [Packs](#packs)
@@ -386,6 +387,48 @@ The following line is not an emtpy scope, but rather, and empty list!!
 x = { };
 ```
 
+
+
+## Import System
+
+`import` runs the specified file, then pull all the _global_ namespaces into the current namespaces. Any global in the specified module will **NOT** be imported.
+
+in `../folder/module.pie`:
+```pie
+global_var = 1;
+
+space global_space {
+    x = 1;
+};
+
+{
+    space local_space {
+        y = 2;
+    };
+}
+
+__builtin_print("in module");
+```
+
+in `main.pie`
+```pie
+import ../folder/module;
+import ../folder/module;
+
+__builtin_print(global_space::x);
+```
+Running the file gives the following output:
+```
+in module
+in module
+1
+```
+
+`local_space` is not accessible from `main.pie` since it isn't a top level namespace.
+The `import` expression yields the last expression inside the imported file.
+Note that `.pie` is omitted in the `import` directive.
+
+
 ## Operators
 
 Pie doesn't provide any operators. One has to define their own. For that reason, any operator symbol (+, -, *, /, etc...) can be used as a variable name.
@@ -498,32 +541,6 @@ The above expression evaluates right-to-left:
 ##### Separated binary right fold
 `(sep + ... + pack + init)`
 
-
-
-# Import System
-
-`import` is the only keyword that is not recognized by the interpreter. Instead, it's a pre-processor directive:
-
-in `../folder/file.pie`:
-```pie
-x = 1;
-```
-
-in `main.pie`
-```pie
-import ../folder/file;
-import ../folder/file;
-
-__builtin_print(x);
-```
-
-The resulting file:
-```pie
-x = 1;
-
-__builtin_print(x);
-```
-Note that `.pie` is omitted in the `import` directive.
 
 ## Builtins
 

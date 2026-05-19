@@ -139,32 +139,32 @@ public:
 
     void operator()(expr::Num *n) {
         if (auto id = findVar(n->stringify())) {
-            n->ID = *id;
+            n->getID() = *id;
             return;
         }
     }
     void operator()(expr::Bool *b) {
         if (auto id = findVar(b->stringify())) {
-            b->ID = *id;
+            b->getID() = *id;
             return;
         }
     }
     void operator()(expr::String *s) {
         if (auto id = findVar(s->stringify())) {
-            s->ID = *id;
+            s->getID() = *id;
             return;
         }
     }
 
     void operator()(expr::Cascade *c) {
         if (auto id = findVar(c->stringify())) {
-            c->ID = *id;
+            c->getID() = *id;
             return;
         }
     }
     void operator()(expr::Fix *f) {
         if (auto id = findVar(f->stringify())) {
-            f->ID = *id;
+            f->getID() = *id;
             return;
         }
 
@@ -174,7 +174,7 @@ public:
 
     void accessAssign(expr::Access *acc, expr::Assignment *ass) {
         if (const auto id = findVar(acc->var->stringify()); id) {
-            acc->var->ID = *id;
+            acc->var->getID() = *id;
             std::visit(*this, ass->rhs->variant());
         }
         else util::error<except::NameLookup>("Name `" + acc->var->stringify() + "` not found in assignment: " + ass->stringify());
@@ -213,15 +213,15 @@ public:
         if (is_closure) {
             // if there is a type explicitly stated, then a new variable should be create no matter what
             if (not type::shouldReassign(ass->type)) {
-                ass->lhs->ID = variable_index++;
-                addVar(ass->lhs->stringify(), ass->lhs->ID);
+                ass->lhs->getID() = variable_index++;
+                addVar(ass->lhs->stringify(), ass->lhs->getID());
             }
             else if (const auto id = findVar(ass->lhs->stringify()); id) {
-                ass->lhs->ID = *id;
+                ass->lhs->getID() = *id;
             }
             else {
-                ass->lhs->ID = variable_index++;
-                addVar(ass->lhs->stringify(), ass->lhs->ID);
+                ass->lhs->getID() = variable_index++;
+                addVar(ass->lhs->stringify(), ass->lhs->getID());
             }
         }
 
@@ -235,15 +235,15 @@ public:
         if (not is_closure) {
             // if there is a type explicitly stated, then a new variable should be create no matter what
             if (not type::shouldReassign(ass->type)) {
-                ass->lhs->ID = variable_index++;
-                addVar(ass->lhs->stringify(), ass->lhs->ID);
+                ass->lhs->getID() = variable_index++;
+                addVar(ass->lhs->stringify(), ass->lhs->getID());
             }
             else if (const auto id = findVar(ass->lhs->stringify()); id) {
-                ass->lhs->ID = *id;
+                ass->lhs->getID() = *id;
             }
             else { // I could probably shorten this to only use an "if-else" and not "if-elif-else"
-                ass->lhs->ID = variable_index++;
-                addVar(ass->lhs->stringify(), ass->lhs->ID);
+                ass->lhs->getID() = variable_index++;
+                addVar(ass->lhs->stringify(), ass->lhs->getID());
             }
         }
     }
@@ -251,17 +251,17 @@ public:
 
     void operator()(expr::Name *name) {
         if (const auto id = findVar(name->name)) {
-            name->ID = *id;
+            name->getID() = *id;
             return;
         }
 
-        util::error<except::NameLookup>("Name `" + name->name + " with ID [" + std::to_string(name->ID) + "] not found!");
+        util::error<except::NameLookup>("Name `" + name->name + " with ID [" + std::to_string(name->getID()) + "] not found!");
     }
 
 
     void operator()(expr::Block *b) {
         if (auto id = findVar(b->stringify())) {
-            b->ID = *id;
+            b->getID() = *id;
             return;
         }
 
@@ -273,7 +273,7 @@ public:
 
     void operator()(expr::Closure *c) {
         if (auto id = findVar(c->stringify())) {
-            c->ID = *id;
+            c->getID() = *id;
             return;
         }
 
@@ -284,7 +284,7 @@ public:
 
             if (auto expr_type = type::isExpr(type)) {
                 if (const auto id = findVar(type->text()); id)
-                    expr_type->t->ID = *id;
+                    expr_type->t->getID() = *id;
             }
 
             name.ID = variable_index++;
@@ -298,7 +298,7 @@ public:
 
     void operator()(expr::Call *call) {
         if (auto id = findVar(call->stringify())) {
-            call->ID = *id;
+            call->getID() = *id;
             return;
         }
 
@@ -314,7 +314,7 @@ public:
 
     void operator()(expr::List *list) {
         if (auto id = findVar(list->stringify())) {
-            list->ID = *id;
+            list->getID() = *id;
             return;
         }
 
@@ -324,7 +324,7 @@ public:
 
     void operator()(expr::Map *map) {
         if (auto id = findVar(map->stringify())) {
-            map->ID = *id;
+            map->getID() = *id;
             return;
         }
 
@@ -334,7 +334,7 @@ public:
 
     void operator()(expr::Expansion *e) {
         if (auto id = findVar(e->stringify())) {
-            e->ID = *id;
+            e->getID() = *id;
             return;
         }
 
@@ -343,7 +343,7 @@ public:
 
     void operator()(expr::UnaryFold *fold) {
         if (auto id = findVar(fold->stringify())) {
-            fold->ID = *id;
+            fold->getID() = *id;
             return;
         }
 
@@ -352,7 +352,7 @@ public:
 
     void operator()(expr::SeparatedUnaryFold *fold) {
         if (auto id = findVar(fold->stringify())) {
-            fold->ID = *id;
+            fold->getID() = *id;
             return;
         }
 
@@ -362,7 +362,7 @@ public:
 
     void operator()(expr::BinaryFold *fold) {
         if (auto id = findVar(fold->stringify())) {
-            fold->ID = *id;
+            fold->getID() = *id;
             return;
         }
 
@@ -375,7 +375,7 @@ public:
 
     void operator()(expr::Class *cls) {
         if (auto id = findVar(cls->stringify())) {
-            cls->ID = *id;
+            cls->getID() = *id;
             return;
         }
 
@@ -384,8 +384,8 @@ public:
 
          // needed for methods to access member variables
         for (auto& [name, _, __] : cls->fields) {
-            name.ID = variable_index++;
-            addVar(name.name, name.ID);
+            name.getID() = variable_index++;
+            addVar(name.name, name.getID());
         }
 
         for (const auto& [_, type, expr] : cls->fields) {
@@ -397,7 +397,7 @@ public:
 
     void operator()(expr::Union *onion) {
         if (auto id = findVar(onion->stringify())) {
-            onion->ID = *id;
+            onion->getID() = *id;
             return;
         }
 
@@ -460,7 +460,7 @@ public:
 
     void operator()(expr::Match *match) {
         if (auto id = findVar(match->stringify())) {
-            match->ID = *id;
+            match->getID() = *id;
             return;
         }
 
@@ -483,7 +483,7 @@ public:
 
     void operator()(expr::Loop *loop) {
         if (auto id = findVar(loop->stringify())) {
-            loop->ID = *id;
+            loop->getID() = *id;
             return;
         }
 
@@ -506,7 +506,7 @@ public:
 
     void operator()(expr::Break *br) {
         if (auto id = findVar(br->stringify())) {
-            br->ID = *id;
+            br->getID() = *id;
             return;
         }
 
@@ -517,7 +517,7 @@ public:
 
     void operator()(expr::Continue *cont) {
         if (auto id = findVar(cont->stringify())) {
-            cont->ID = *id;
+            cont->getID() = *id;
             return;
         }
 
@@ -542,7 +542,7 @@ public:
 
     void operator()(expr::Import *import) {
         if (auto id = findVar(import->stringify())) {
-            import->ID = *id;
+            import->getID() = *id;
             return;
         }
 
@@ -580,7 +580,7 @@ public:
 
     void operator()(expr::Namespace *n) {
         if (auto id = findVar(n->stringify())) {
-            n->ID = *id;
+            n->getID() = *id;
             return;
         }
 
@@ -604,7 +604,7 @@ public:
 
     void operator()(expr::UseSpace *use) {
         if (auto id = findVar(use->stringify())) {
-            use->ID = *id;
+            use->getID() = *id;
             return;
         }
 
@@ -666,7 +666,7 @@ public:
 
     void operator()(expr::Use *use) {
         if (auto id = findVar(use->stringify())) {
-            use->ID = *id;
+            use->getID() = *id;
             return;
         }
 
@@ -706,7 +706,7 @@ public:
 
     void operator()(expr::Grouping *group) {
         if (auto id = findVar(group->stringify())) {
-            group->ID = *id;
+            group->getID() = *id;
             return;
         }
 
@@ -716,7 +716,7 @@ public:
 
     void operator()(expr::UnaryOp *up) {
         if (auto id = findVar(up->stringify())) {
-            up->ID = *id;
+            up->getID() = *id;
             return;
         }
 
@@ -726,7 +726,7 @@ public:
 
     void operator()(expr::BinOp *bp) {
         if (auto id = findVar(bp->stringify())) {
-            bp->ID = *id;
+            bp->getID() = *id;
             return;
         }
 
@@ -737,7 +737,7 @@ public:
 
     void operator()(expr::PostOp   *pp) {
         if (auto id = findVar(pp->stringify())) {
-            pp->ID = *id;
+            pp->getID() = *id;
             return;
         }
 
@@ -747,7 +747,7 @@ public:
 
     void operator()(expr::CircumOp *cp) {
         if (auto id = findVar(cp->stringify())) {
-            cp->ID = *id;
+            cp->getID() = *id;
             return;
         }
 
@@ -757,7 +757,7 @@ public:
 
     void operator()(expr::OpCall *oc) {
         if (auto id = findVar(oc->stringify())) {
-            oc->ID = *id;
+            oc->getID() = *id;
             return;
         }
 
@@ -775,7 +775,7 @@ public:
 
             else if (const auto id = findVar(type->text()); id) {
                 expr_type->ID = *id;
-                expr_type->t->ID = *id;
+                expr_type->t->getID() = *id;
             }
             else if (auto unio = dynamic_cast<expr::Union*>(expr_type->t.get())) {
                 for (auto& type : unio->types) {
@@ -798,7 +798,7 @@ public:
 
     void operator()(expr::Syntax *syn) {
         if (auto id = findVar(syn->stringify())) {
-            syn->ID = *id;
+            syn->getID() = *id;
             return;
         }
 
@@ -808,7 +808,7 @@ public:
 
     void operator()(expr::Type *type) {
         if (auto id = findVar(type->stringify())) {
-            type->ID = *id;
+            type->getID() = *id;
             type->type->ID = *id;
             return;
         }

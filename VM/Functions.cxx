@@ -58,7 +58,7 @@ namespace pie {
             return {};
         }
 
-        [[nodiscard]] FastValue BuiltIn::sub(const FastValue& rhs) {
+        [[nodiscard]] FastValue BuiltIn::sub([[maybe_unused]] const FastValue& rhs) {
             return {};
         }
 

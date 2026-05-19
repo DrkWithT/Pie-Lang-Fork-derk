@@ -261,12 +261,12 @@ namespace pie {
             return true;
         }
 
-        [[nodiscard]] bool Compiler::emit_match(const expr::Match* expr) {
+        [[nodiscard]] bool Compiler::emit_match([[maybe_unused]] const expr::Match* expr) {
             std::println(std::cerr, "Compile error at emit_match(): unsupported expression!");
             return false;
         }
 
-        [[nodiscard]] bool Compiler::emit_block(const expr::Block* expr) {
+        [[nodiscard]] bool Compiler::emit_block([[maybe_unused]] const expr::Block* expr) {
             std::println(std::cerr, "Compile error at emit_block(): unsupported expression!");
             return false;
         }

@@ -160,7 +160,7 @@ public:
 
 
     Value operator()(const expr::Num *n) {
-        if (const auto& var = getVar(n->ID); var) return var->first;
+        if (const auto& var = getVar(n->getID()); var) return var->first;
 
 
         // have to do an if rather than ternary so the return value isn't always coerced into doubles
@@ -170,14 +170,14 @@ public:
 
 
     Value operator()(const expr::Bool *b) {
-        if (const auto& var = getVar(b->ID); var) return var->first;
+        if (const auto& var = getVar(b->getID()); var) return var->first;
 
         return b->boolean;
     }
 
 
     Value operator()(const expr::String *s) {
-        if (const auto& var = getVar(s->ID); var) return var->first;
+        if (const auto& var = getVar(s->getID()); var) return var->first;
 
         return s->str;
     }
@@ -213,14 +213,14 @@ public:
 
     Value fetchRef(const expr::Name *n) {
         for (const auto& [e, _] : std::views::reverse(env)) {
-            if (e.contains(n->ID)) {
-                const auto& [named_ref, value_ptr, type_ptr] = e.at(n->ID);
+            if (e.contains(n->getID())) {
+                const auto& [named_ref, value_ptr, type_ptr] = e.at(n->getID());
                 const auto& [_, space] = named_ref;
 
-                if (not space or not space->members.contains(n->ID)) 
+                if (not space or not space->members.contains(n->getID())) 
                     util::error();
 
-                return *get<value::ValuePtr>(space->members[n->ID]);
+                return *get<value::ValuePtr>(space->members[n->getID()]);
             }
         }
 
@@ -235,8 +235,8 @@ public:
         // interesting!
         // how about a special value?
 
-        if (const auto& var = getVar(n->ID); var) {
-            if (isRef(n->ID)) return fetchRef(n);
+        if (const auto& var = getVar(n->getID()); var) {
+            if (isRef(n->getID())) return fetchRef(n);
 
             return var->first;
         }
@@ -258,7 +258,7 @@ public:
 
 
         // printEnv(env);
-        util::error("Name `" + n->name + "`, with ID [" + std::to_string(n->ID) + "] is not defined!");
+        util::error("Name `" + n->name + "`, with ID [" + std::to_string(n->getID()) + "] is not defined!");
     }
 
 
@@ -267,7 +267,7 @@ public:
 
 
     Value operator()(const expr::List* list) {
-        if (const auto& var = getVar(list->ID); var) return var->first;
+        if (const auto& var = getVar(list->getID()); var) return var->first;
 
         std::vector<Value> values;
         std::transform(
@@ -327,7 +327,7 @@ public:
 
 
     Value operator()(const expr::UnaryFold *fold) {
-        if (const auto& var = getVar(fold->ID); var) return var->first;
+        if (const auto& var = getVar(fold->getID()); var) return var->first;
 
         Value pack = std::visit(*this, fold->pack->variant());
 
@@ -427,7 +427,7 @@ public:
 
 
     Value operator()(const expr::SeparatedUnaryFold *fold) {
-        if (const auto& var = getVar(fold->ID); var) return var->first;
+        if (const auto& var = getVar(fold->getID()); var) return var->first;
 
 
         Value lhs = std::visit(*this, fold->lhs->variant());
@@ -558,7 +558,7 @@ public:
 
 
     Value operator()(const expr::BinaryFold *fold) {
-        if (const auto& var = getVar(fold->ID); var) return var->first;
+        if (const auto& var = getVar(fold->getID()); var) return var->first;
 
 
         Value pack = std::visit(*this, fold->pack->variant());
@@ -755,11 +755,11 @@ public:
     Value refAssign(const expr::Assignment *ass, const expr::Name* name) {
 
         for (const auto& [e, _] : std::views::reverse(env)) {
-            if (e.contains(name->ID)) {
-                const auto& [named_ref, value_ptr, type_ptr] = e.at(name->ID);
+            if (e.contains(name->getID())) {
+                const auto& [named_ref, value_ptr, type_ptr] = e.at(name->getID());
                 const auto& [_, space] = named_ref;
 
-                if (not space or not space->members.contains(name->ID)) 
+                if (not space or not space->members.contains(name->getID())) 
                     util::error();
 
 
@@ -767,16 +767,16 @@ public:
                 // if (not namespaces.contains(space)) util::error("Namespace `" + space + "` not found!");
                 // if (not namespaces[space].contains(name->ID)) util::error("Name `" + name->name + "` with ID [" + std::to_string(name->ID) + "] not found in space " + space);
 
-                auto [__, ___, type] = space->members[name->ID];
+                auto [__, ___, type] = space->members[name->getID()];
 
                 auto value = std::visit(*this, ass->rhs->variant());
 
-                *get<value::ValuePtr>(space->members[name->ID]) = typeCheck(value, std::move(type),
+                *get<value::ValuePtr>(space->members[name->getID()]) = typeCheck(value, std::move(type),
                     "In assignment: " + ass->stringify() +
                     "\nType mis-match! Expected: " + type->text() + ", got: " + typeOf(value)->text()
                 );
 
-                return *get<value::ValuePtr>(space->members[name->ID]) = std::move(value);
+                return *get<value::ValuePtr>(space->members[name->getID()]) = std::move(value);
             }
         }
 
@@ -791,8 +791,8 @@ public:
         bool change{};
 
         // variable already exists. Check that type matches the rhs type
-        if (const auto& var = getVar(name->ID); var) {
-            if (isRef(name->ID)) return refAssign(ass, name);
+        if (const auto& var = getVar(name->getID()); var) {
+            if (isRef(name->getID())) return refAssign(ass, name);
 
             if (type::shouldReassign(type)) {
                 // no need to check if it's a valid type since that already was checked when it was creeated
@@ -817,7 +817,7 @@ public:
 
 
         // if (type->text() == "Syntax")
-        //     return addVar(name->stringify(), name->ID, std::make_shared<value::Value>(ass->rhs->variant()), type);
+        //     return addVar(name->stringify(), name->getID(), std::make_shared<value::Value>(ass->rhs->variant()), type);
 
 
         auto value = std::visit(*this, ass->rhs->variant());
@@ -842,9 +842,9 @@ public:
 
 
         if (change) {
-            if (not changeVar(name->ID, value)) util::error();
+            if (not changeVar(name->getID(), value)) util::error();
         }
-        else addVar(name->stringify(), name->ID, std::make_shared<value::Value>(value), type);
+        else addVar(name->stringify(), name->getID(), std::make_shared<value::Value>(value), type);
 
         return value;
     }
@@ -870,14 +870,14 @@ public:
         // assign to the serialization (stringification) of the AST node
         return addVar(
             ass->lhs->stringify(),
-            ass->lhs->ID,
+            ass->lhs->getID(),
             std::make_shared<value::Value>(std::visit(*this, ass->rhs->variant()))
         );
     }
 
 
     Value operator()(const expr::Class *cls) {
-        if (const auto& var = getVar(cls->ID); var) return var->first;
+        if (const auto& var = getVar(cls->getID()); var) return var->first;
 
 
         return // getting lispy :sob: fuck this memory ass shit
@@ -931,7 +931,7 @@ public:
 
 
     Value operator()(const expr::Union *onion) {
-        if (const auto& var = getVar(onion->ID); var) return var->first;
+        if (const auto& var = getVar(onion->getID()); var) return var->first;
 
 
         std::vector<type::TypePtr> types;
@@ -1113,7 +1113,7 @@ public:
 
 
     Value operator()(const expr::Namespace *ns) {
-        if (const auto& var = getVar(ns->ID); var) return var->first;
+        if (const auto& var = getVar(ns->getID()); var) return var->first;
 
 
         ScopeGuard sg{this};
@@ -1149,7 +1149,7 @@ public:
 
 
     Value operator()(const expr::Use *use) {
-        if (const auto& var = getVar(use->ID); var) return var->first;
+        if (const auto& var = getVar(use->getID()); var) return var->first;
 
 
         const auto space = findNS(use->spaces, use->global);
@@ -1165,7 +1165,7 @@ public:
     }
 
     Value operator()(const expr::UseSpace *use) {
-        if (const auto& var = getVar(use->ID); var) return var->first;
+        if (const auto& var = getVar(use->getID()); var) return var->first;
 
         const auto space = findNS(use->spaces, use->global);
 
@@ -1254,12 +1254,12 @@ public:
 
 
     Value operator()(const expr::SpaceAccess *sa) {
-        if (const auto& var = getVar(sa->ID); var) return var->first;
+        if (const auto& var = getVar(sa->getID()); var) return var->first;
 
         const auto space = findNS(sa->spaces, sa->global);
 
         // lexical scopign must've taken care of that!
-        // if (not namespaces[space].contains(sa->name.ID)) util::error("Name `" + sa->name.name + "` with ID [" + std::to_string(sa->name.ID) + "] not found in space " + space);
+        // if (not namespaces[space].contains(sa->name.getID())) util::error("Name `" + sa->name.name + "` with ID [" + std::to_string(sa->name.getID()) + "] not found in space " + space);
 
 
         return *get<value::ValuePtr>(space->members[sa->name.ID]);
@@ -1324,7 +1324,7 @@ public:
 
 
     Value operator()(const expr::Match *m) {
-        if (const auto& var = getVar(m->ID); var) return var->first;
+        if (const auto& var = getVar(m->getID()); var) return var->first;
 
         const Value value = std::visit(*this, m->expr->variant());
 
@@ -1353,7 +1353,7 @@ public:
 
 
     Value operator()(const expr::Syntax *syn) {
-        if (const auto& var = getVar(syn->ID); var) return var->first;
+        if (const auto& var = getVar(syn->getID()); var) return var->first;
 
         // return std::visit(*this, syn->expr->variant());
         return syn->expr->variant();
@@ -1361,14 +1361,14 @@ public:
 
 
     Value operator()(const expr::Type* type) {
-        if (const auto& var = getVar(type->ID); var) return var->first;
+        if (const auto& var = getVar(type->getID()); var) return var->first;
 
         return validateType(type->type);
     };
 
 
     Value operator()(const expr::Loop *loop) {
-        if (const auto& var = getVar(loop->ID); var) return var->first;
+        if (const auto& var = getVar(loop->getID()); var) return var->first;
 
 
         enum class Type { NONE = 0, INT, BOOL, LIST, PACK, OBJECT };
@@ -1634,7 +1634,7 @@ public:
 
     //* only added to differentiate between expressions such as: 1 + 2 and (1 + 2)
     Value operator()(const expr::Grouping *g) {
-        if (const auto& var = getVar(g->ID); var) return var->first;
+        if (const auto& var = getVar(g->getID()); var) return var->first;
 
         return std::visit(*this, g->expr->variant());
     }
@@ -1722,7 +1722,7 @@ public:
     }
 
     Value operator()(const expr::UnaryOp *up) {
-        if (const auto& var = getVar(up->ID); var) return var->first;
+        if (const auto& var = getVar(up->getID()); var) return var->first;
 
 
         const auto& op = findPrefixOp(up->op);
@@ -1781,7 +1781,7 @@ public:
 
 
     Value operator()(const expr::BinOp *bp) {
-        if (const auto& var = getVar(bp->ID); var) return var->first;
+        if (const auto& var = getVar(bp->getID()); var) return var->first;
 
 
         const auto& op = findOp(bp->op);
@@ -1875,7 +1875,7 @@ public:
 
 
     Value operator()(const expr::PostOp *pp) {
-        if (const auto& var = getVar(pp->ID); var) return var->first;
+        if (const auto& var = getVar(pp->getID()); var) return var->first;
 
 
         const auto& op = findOp(pp->op);
@@ -1932,7 +1932,7 @@ public:
 
 
     Value operator()(const expr::CircumOp *cp) {
-        if (const auto& var = getVar(cp->ID); var) return var->first;
+        if (const auto& var = getVar(cp->getID()); var) return var->first;
 
         const auto& op = findPrefixOp(cp->op1);
         expr::Closure* func;
@@ -1987,7 +1987,7 @@ public:
     };
 
     Value operator()(const expr::OpCall *oc) {
-        if (const auto& var = getVar(oc->ID); var) return var->first;
+        if (const auto& var = getVar(oc->getID()); var) return var->first;
 
 
 
@@ -2077,7 +2077,7 @@ public:
     };
 
     Value operator()(const expr::Call *call) {
-        if (const auto& var = getVar(call->ID); var) return var->first;
+        if (const auto& var = getVar(call->getID()); var) return var->first;
 
         // const auto args = std::move(call)->args;
         const auto args = call->args;
@@ -2849,7 +2849,7 @@ public:
         for (; index < starting_index; ++index) {
             const auto& [name, type, value] = obj.second->members[index];
 
-            addVar(name.name, name.ID, value, type);
+            addVar(name.name, name.getID(), value, type);
         }
 
         for (; index < fields.size(); ++index) {
@@ -2873,7 +2873,7 @@ public:
 
             // maybe not allowing the usage of previous members in the initializers of other members is the way? not sure
             const auto value = std::make_shared<Value>(v);
-            addVar(name.name, name.ID, value, type);
+            addVar(name.name, name.getID(), value, type);
             obj.second->members.push_back({name, type, value});
         }
 
@@ -2921,7 +2921,7 @@ public:
 
 
     Value operator()(const expr::Closure *c) {
-        if (const auto& var = getVar(c->ID); var) return var->first;
+        if (const auto& var = getVar(c->getID()); var) return var->first;
 
         expr::Closure closure = *c; // copy to use for fix the types
 
@@ -2961,7 +2961,7 @@ public:
 
 
     Value operator()(const expr::Block *block) {
-        if (const auto& var = getVar(block->ID); var) return var->first;
+        if (const auto& var = getVar(block->getID()); var) return var->first;
 
 
         ScopeGuard sg{this};
@@ -2989,7 +2989,7 @@ public:
 
 
     Value operator()(const expr::Fix *fix) {
-        if (const auto& var = getVar(fix->ID); var) return var->first;
+        if (const auto& var = getVar(fix->getID()); var) return var->first;
         // return std::visit(*this, fix->func->variant());
 
         auto func = dynamic_cast<expr::Closure*>(fix->funcs[0].get());
@@ -3524,8 +3524,8 @@ public:
         // Since this is a meta function that operates on AST nodes rather than values
         // it gets its special treatment here..
         if (name == "reset") {
-            if (const auto& v = getVar(args[0]->ID); not v) util::error("Reseting an unset value: " + args[0]->stringify());
-            else removeVar(args[0]->ID);
+            if (const auto& v = getVar(args[0]->getID()); not v) util::error("Reseting an unset value: " + args[0]->stringify());
+            else removeVar(args[0]->getID());
 
             // return to_bigint(num->num);
             return value1;

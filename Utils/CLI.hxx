@@ -10,8 +10,7 @@
 #include "../Parser/Parser.hxx"
 #include "../Analysis/LexicalScoping.hxx"
 #include "../Interp/Interpreter.hxx"
-
-
+#include "../Utils/CherryCLI.hxx"
 
 inline namespace pie {
 namespace cli {
@@ -21,7 +20,9 @@ namespace cli {
         std::cout << "print parsed:        -ast"   << '\n';
         std::cout << "print pre-processed: -pre"   << '\n';
         std::cout << "don't run program:   -run"   << '\n';
-        std::cout << "print this message:  -help"   << '\n';
+        std::cout << "run experimental VM: -exp"   << '\n';
+        std::cout << "dump VM bytecode:    -dump"  << '\n';
+        std::cout << "print this message:  -help"  << '\n';
     }
 
 

@@ -1,5 +1,15 @@
 #pragma once
 
+#include <vector>
+#include <cctype>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <unordered_map>
+#include <algorithm>
+#include <sstream>
+#include <fstream>
+
 #include "Token.hxx"
 #include "../Utils/utils.hxx"
 

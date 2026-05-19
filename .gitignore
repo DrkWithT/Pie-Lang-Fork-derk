@@ -1,7 +1,10 @@
+old_bins/
 Pie
 run_tests
 code/
 .vscode/
 remote_includes/
 *.dSYM/
-*.txt
+compile_flags.txt
+*.pie
+build/

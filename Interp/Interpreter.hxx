@@ -4053,18 +4053,6 @@ public:
         return {};
     }
 
-<<<<<<< HEAD
-    void removeVar(const std::string& name) {
-        for(auto& curr_env : std::views::reverse(env)) {
-            if (curr_env.first.contains(name)) {
-                curr_env.first.erase(name);
-                return;
-            }
-        }
-    }
-
-    Environment envStackToEnvMap() const {
-=======
     bool changeVar(const size_t ID, const value::Value& v) {
         for (auto rev_it = env.rbegin(); rev_it != env.rend(); ++rev_it)
             if (rev_it->first.contains(ID)) {
@@ -4108,7 +4096,6 @@ public:
 
 
     static Environment envStackToEnvMap(const std::vector<std::pair<Environment, EnvTag>>& env) {
->>>>>>> main
         Environment e;
         for(const auto& curr_env : env)
             for(const auto& [key, value] : curr_env.first)

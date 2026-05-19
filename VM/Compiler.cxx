@@ -353,7 +353,7 @@ namespace pie {
             std::vector<SymbolInfo> param_locuses; // ? Here, push back locuses only!
 
             for (const auto& param_name : params) {
-                auto temp_locus = record_ident(param_name);
+                auto temp_locus = record_ident(param_name.name);
 
                 param_locuses.push_back(*temp_locus);
             }
@@ -484,29 +484,29 @@ namespace pie {
         }
 
         [[nodiscard]] bool Compiler::emit_expr(const expr::ExprPtr& any_expr) {
-            auto expr_variant = any_expr->variant();
+            const auto expr_variant = any_expr->variant();
 
-            if (auto expr_bool = std::get_if<const expr::Bool*>(&expr_variant); expr_bool) {
+            if (auto expr_bool = std::get_if<expr::Bool*>(&expr_variant); expr_bool) {
                 return emit_bool(*expr_bool);
-            } else if (auto expr_num = std::get_if<const expr::Num*>(&expr_variant); expr_num) {
+            } else if (auto expr_num = std::get_if<expr::Num*>(&expr_variant); expr_num) {
                 return emit_num(*expr_num);
-            } else if (auto expr_str = std::get_if<const expr::String*>(&expr_variant); expr_str) {
+            } else if (auto expr_str = std::get_if<expr::String*>(&expr_variant); expr_str) {
                 return emit_string(*expr_str);
-            } else if (auto expr_name = std::get_if<const expr::Name*>(&expr_variant); expr_name) {
+            } else if (auto expr_name = std::get_if<expr::Name*>(&expr_variant); expr_name) {
                 return emit_name(*expr_name);
-            } else if (auto expr_assign = std::get_if<const expr::Assignment*>(&expr_variant); expr_assign) {
+            } else if (auto expr_assign = std::get_if<expr::Assignment*>(&expr_variant); expr_assign) {
                 return emit_assignment(*expr_assign);
-            } else if (auto expr_call = std::get_if<const expr::Call*>(&expr_variant); expr_call) {
+            } else if (auto expr_call = std::get_if<expr::Call*>(&expr_variant); expr_call) {
                 return emit_call(*expr_call);
-            } else if (auto expr_closure = std::get_if<const expr::Closure*>(&expr_variant); expr_closure) {
+            } else if (auto expr_closure = std::get_if<expr::Closure*>(&expr_variant); expr_closure) {
                 return emit_closure(*expr_closure);
-            } else if (auto expr_prefix = std::get_if<const expr::Prefix*>(&expr_variant); expr_prefix) {
+            } else if (auto expr_prefix = std::get_if<expr::Prefix*>(&expr_variant); expr_prefix) {
                 return emit_prefix(*expr_prefix);
-            } else if (auto expr_infix = std::get_if<const expr::Infix*>(&expr_variant); expr_infix) {
+            } else if (auto expr_infix = std::get_if<expr::Infix*>(&expr_variant); expr_infix) {
                 return emit_infix(*expr_infix);
-            } else if (auto expr_unary_op = std::get_if<const expr::UnaryOp*>(&expr_variant); expr_unary_op) {
+            } else if (auto expr_unary_op = std::get_if<expr::UnaryOp*>(&expr_variant); expr_unary_op) {
                 return emit_unary_op(*expr_unary_op);
-            } else if (auto expr_binary_op = std::get_if<const expr::BinOp*>(&expr_variant); expr_binary_op) {
+            } else if (auto expr_binary_op = std::get_if<expr::BinOp*>(&expr_variant); expr_binary_op) {
                 return emit_binary_op(*expr_binary_op);
             } else {
                 std::println(std::cerr, "Compile error at emit_expr(): unknown expression type!");
@@ -524,10 +524,10 @@ namespace pie {
             return true;
         }
 
-        std::expected<Program, std::string> Compiler::operator()(const std::pair<std::vector<expr::ExprPtr>, Operators>& ast, const std::string& source) {
+        std::expected<Program, std::string> Compiler::operator()(const std::vector<expr::ExprPtr>& ast, const std::string& source) {
             encode_instruction(Opcode::start_env);
 
-            for (int expr_pos = 0; const auto& expr_ptr : ast.first) {
+            for (int expr_pos = 0; const auto& expr_ptr : ast) {
                 if (!emit_expr(expr_ptr)) {
                     return std::unexpected {
                         std::format("Compilation failed at expression #{}:\n\nSnippet: {}", expr_pos, expr_ptr->stringify())

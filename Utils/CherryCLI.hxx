@@ -11,7 +11,7 @@
 #include <print>
 
 #include "../Lex/Lexer.hxx"
-#include "../Preprocessor/Preprocessor.hxx"
+// #include "../Preprocessor/Preprocessor.hxx"
 #include "../Parser/Parser.hxx"
 #include "../Analysis/LexicalScoping.hxx"
 #include "../VM/Compiler.hxx"
@@ -59,9 +59,9 @@ inline namespace pie {
                 auto ast = p.parse();
 
                 {
-                    pie::analysis::LexicalAnalysis anal;
+                    pie::analysis::LexicalScoping anal;
                     
-                    for (const auto& [exprs, ops] = ast; const auto& expr : exprs) {
+                    for (const auto& expr : ast) {
                         std::visit(anal, expr->variant());
                     }
                 }

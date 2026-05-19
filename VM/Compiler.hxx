@@ -164,7 +164,7 @@ namespace pie {
 
             [[maybe_unused]] bool add_builtin_object(std::string name, std::unique_ptr<ObjectBase> global);
 
-            [[nodiscard]] std::expected<Program, std::string> operator()(const std::pair<std::vector<expr::ExprPtr>, Operators>& ast, const std::string& source);
+            [[nodiscard]] std::expected<Program, std::string> operator()(const std::vector<expr::ExprPtr>& ast, const std::string& source);
         };
     }    
 }

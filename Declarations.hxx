@@ -69,6 +69,7 @@ using ExprPtr = std::shared_ptr<Expr>;
 struct Expr {
     virtual ~Expr() = default;
     virtual ssize_t& getID() = 0;
+    virtual ssize_t getID() const = 0;
     virtual std::string stringify(const size_t indent = 0) const = 0;
     virtual bool involvesName(const std::string_view sv) const = 0;
     virtual ExprPtr left() const = 0;

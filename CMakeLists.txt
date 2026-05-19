@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(PIE_LANG_SRC_DIR "${CMAKE_SOURCE_DIR}")
 
-message(NOTICE "Currently, this build only creates the Pie CLI.")
+message(WARNING "Currently, this build only creates the Pie CLI.")
 
 # TODO: implement installation of Catch2 for Tests/Test.cc program
 set(PIE_LANG_REMOTE_INCLUDE_DIR "${PIE_LANG_SRC_DIR}/remote_includes")
@@ -41,4 +41,4 @@ target_include_directories(cherrypie PRIVATE ${PIE_LANG_SRC_DIR} PRIVATE ${PIE_L
 target_link_directories(cherrypie PRIVATE ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 target_link_libraries(cherrypie PRIVATE pie_tree_interp PRIVATE pie_cherry_vm)
 
-message(NOTICE "Pie CLI built at ${PROJECT_BINARY_DIR}/cherrypie")
+message(WARNING "Pie CLI (with EXPERIMENTAL VM) built at ${PROJECT_BINARY_DIR}/cherrypie")

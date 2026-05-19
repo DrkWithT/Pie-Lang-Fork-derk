@@ -68,6 +68,8 @@ struct Num : Expr {
 
     ssize_t& getID() override { { throw std::runtime_error {"unsupported getID() call"}; } }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t = 0) const override { return num; }
 
     bool involvesName(const std::string_view sv) const override { return sv == stringify(); }
@@ -84,6 +86,8 @@ struct Bool : Expr {
     explicit Bool(const bool b) noexcept : boolean{b} {}
 
     ssize_t& getID() override { { throw std::runtime_error {"unsupported getID() call"}; } }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t = 0) const override { return boolean ? "true" : "false"; }
 
@@ -102,6 +106,8 @@ struct String : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t = 0) const override { return '"' + str + '"'; }
 
     bool involvesName(const std::string_view sv) const override { return sv == stringify(); }
@@ -118,6 +124,8 @@ struct Name : Expr {
     explicit Name(std::string n) noexcept : name{std::move(n)} {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t = 0) const override { return name; }
 
@@ -158,6 +166,8 @@ struct List : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         if (elements.empty()) return "{}";
 
@@ -191,6 +201,8 @@ struct Map : Expr {
     // explicit Map(std::unordered_map<ExprPtr, ExprPtr> elts = {}) noexcept : elements{std::move(elts)} {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         if (items.empty()) return "{:}";
@@ -226,6 +238,8 @@ struct Expansion : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         return pack->stringify(indent) + "...";
     }
@@ -250,6 +264,8 @@ struct UnaryFold : Expr {
     {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         if (left_to_right)
@@ -279,6 +295,8 @@ struct SeparatedUnaryFold : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         return '(' + lhs->stringify(indent) + ' ' + op + " ... " + op + ' ' + rhs->stringify(indent) + ')';
     }
@@ -307,6 +325,8 @@ struct BinaryFold : Expr {
     {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         if (left_to_right and sep) 
@@ -344,6 +364,8 @@ struct Assignment : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         if (auto name = dynamic_cast<const Name*>(lhs.get()); name and not type::shouldReassign(type)) {
             return name->stringify(indent) + ": " + type->text() + " = " + rhs->stringify(indent);
@@ -369,6 +391,8 @@ struct Class : Expr {
     : fields{std::move(f)} {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
 
@@ -409,6 +433,8 @@ struct Union : Expr {
     Union(std::vector<type::TypePtr> ts) noexcept : types{std::move(ts)} {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         std::string s = "union {\n";
@@ -476,6 +502,8 @@ struct Match : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         std::string s = "match " + expr->stringify(indent) + " {\n";
 
@@ -537,6 +565,8 @@ struct Type : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override { return type->text(indent); }
 
     bool involvesName(const std::string_view) const override {
@@ -563,6 +593,8 @@ struct Loop : Expr {
     {}
 
     ssize_t& getID() override { return var.ID; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         std::string s = "loop ";
@@ -598,6 +630,8 @@ struct Break : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         if (expr) return "break " + expr->stringify(indent + 4);
 
@@ -627,6 +661,8 @@ struct Continue : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     bool involvesName(const std::string_view sv) const override {
         return sv == stringify() or expr->involvesName(sv);
     }
@@ -646,6 +682,8 @@ struct Access : Expr {
     {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; }
 
     std::string stringify(const size_t indent = 0) const override {
         return var->stringify(indent) + '.' + name;
@@ -698,6 +736,8 @@ struct Namespace : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         std::string s = "space " + name + " {\n";
 
@@ -728,6 +768,8 @@ struct Use : Expr {
     : global{g}, spaces{std::move(ns)}, name{std::move(n)} {}
 
     ssize_t& getID() override { return name.ID; }
+
+    ssize_t getID() const override { return name.ID; };
 
     std::string stringify(const size_t = 0) const override {
         std::string s;
@@ -760,6 +802,8 @@ struct UseSpace : Expr {
     : global{g}, spaces{std::move(ns)} {}
 
     ssize_t& getID() override { return last_item_id; }
+
+    ssize_t getID() const override { return last_item_id; };
 
     std::string stringify(const size_t = 0) const override {
         std::string s = "use space";
@@ -794,6 +838,8 @@ struct Import : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t = 0) const override {
         std::string s;
         for (const char c : path.string())
@@ -821,6 +867,8 @@ struct SpaceAccess : Expr {
 
     ssize_t& getID() override { return name.ID; }
 
+    ssize_t getID() const override { return name.ID; }
+
     std::string stringify(const size_t = 0) const override {
 
         std::string s;
@@ -847,6 +895,8 @@ struct Syntax : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         return '`' + expr->stringify(indent + 4) + '`';
     }
@@ -871,6 +921,8 @@ struct Grouping : Expr {
     Grouping(ExprPtr e) noexcept : expr{std::move(e)} {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         // return '(' + expr->stringify(indent) + ')';
@@ -897,6 +949,8 @@ struct UnaryOp : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         return '(' + op + ' ' + expr->stringify(indent) + ')';
     }
@@ -921,6 +975,8 @@ struct BinOp : Expr {
     {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         return '(' + lhs->stringify(indent) + ' ' + op + ' ' + rhs->stringify(indent) + ')';
@@ -947,6 +1003,8 @@ struct PostOp : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     std::string stringify(const size_t indent = 0) const override {
         return '(' + expr->stringify(indent) + ' ' + op + ')';
     }
@@ -971,6 +1029,8 @@ struct CircumOp : Expr {
     : op1{std::move(o1)}, op2{std::move(o2)}, expr{std::move(e)} {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         return '(' + op1 + ' ' + expr->stringify(indent) + ' ' + op2 + ')';
@@ -1002,6 +1062,8 @@ struct OpCall : Expr {
     {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
 
@@ -1049,6 +1111,8 @@ struct Call : Expr {
     : func{std::move(function)}, named_args{std::move(named)}, args{std::move(pos)} { }
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         std::string s;
@@ -1123,6 +1187,8 @@ struct Closure : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     // const as in doesn't change params or body.
     void       capture(const Environment& e) const { for (const auto& [key, value] : e)          env[key] = value; }
     void returnCapture(const Environment& e) const { for (const auto& [key, value] : e) returned_env[key] = value; }
@@ -1157,6 +1223,8 @@ struct Block : Expr {
     explicit Block(std::vector<ExprPtr> l) noexcept : lines{std::move(l)} {};
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     std::string stringify(const size_t indent = 0) const override {
         std::string s = "{\n";
@@ -1202,6 +1270,8 @@ struct Fix : Expr {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; }
+
     bool involvesName(const std::string_view sv) const override {
         return sv == stringify() or std::ranges::any_of(funcs,
             [sv] (const auto& e) {
@@ -1238,6 +1308,8 @@ struct Prefix : Fix {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     ExprPtr left() const override { return std::make_shared<Prefix>(*this); }
 
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Prefix>(*this); }
@@ -1266,6 +1338,8 @@ struct Infix : Fix {
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
+    ssize_t getID() const override { return -1; };
+
     ExprPtr left() const override { return std::make_shared<Infix>(*this); }
 
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Infix>(*this); }
@@ -1293,6 +1367,8 @@ struct Suffix : Fix {
     }
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     ExprPtr left() const override { return std::make_shared<Suffix>(*this); }
 
@@ -1323,6 +1399,8 @@ struct Exfix : Fix {
     }
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
+
+    ssize_t getID() const override { return -1; };
 
     ExprPtr left() const override { return std::make_shared<Exfix>(*this); }
 
@@ -1376,6 +1454,7 @@ struct Operator : Fix {
 
     ExprPtr left() const override { return std::make_shared<Operator>(*this); }
 
+    ssize_t getID() const override { return -1; };
 
     std::string OpName() const override {
         std::string op_name;

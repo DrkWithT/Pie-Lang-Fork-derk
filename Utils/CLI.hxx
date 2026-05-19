@@ -2,11 +2,8 @@
 
 #include <print>
 #include <string>
-#include <string_view>
-#include <vector>
 #include <filesystem>
 #include <utility>
-#include <stdexcept>
 
 #include "../Lex/Lexer.hxx"
 #include "../Preprocessor/Preprocessor.hxx"
@@ -17,7 +14,8 @@
 
 inline namespace pie {
 namespace cli {
-    void help() {
+
+    inline void help() {
         std::cout << "print tokens:        -token" << '\n';
         std::cout << "print parsed:        -ast"   << '\n';
         std::cout << "print pre-processed: -pre"   << '\n';
@@ -28,7 +26,7 @@ namespace cli {
     }
 
 
-    void REPL(
+    inline void REPL(
         const std::filesystem::path canonical_root,
         const bool print_preprocessed,
         const bool print_tokens,
@@ -36,7 +34,7 @@ namespace cli {
         const bool run
     ) {
         Parser parser{canonical_root};
-        interp::Visitor visitor;
+        interp::Visitor visitor{{}};
 
         for (;;) try {
             std::string line;
@@ -54,7 +52,9 @@ namespace cli {
 
             if (v.empty()) continue;
 
-            auto [exprs, ops] = parser.parse(std::move(v));
+            parser.resetTokens(std::move(v));
+
+            auto exprs = parser.parse();
 
             if (print_parsed) for(const auto& expr : exprs) std::println(std::clog, "{};", expr->stringify(0));
 
@@ -62,7 +62,7 @@ namespace cli {
 
 
             if (run) {
-                visitor.addOperators(std::move(ops));
+                // visitor.addOperators(std::move(ops));
 
                 if (not exprs.empty()) {
                     Value value;
@@ -77,7 +77,9 @@ namespace cli {
         }
     }
 
-    void runFile(
+
+
+    inline void runFile(
         const std::filesystem::path fname,
         const bool print_preprocessed,
         const bool print_tokens,
@@ -97,7 +99,7 @@ namespace cli {
 
         Parser p{std::move(v), fname};
 
-        auto [exprs, ops] = p.parse();
+        auto exprs = p.parse();
 
         if (print_parsed)
             for(const auto& expr : exprs)
@@ -105,12 +107,14 @@ namespace cli {
 
         if(run and (print_parsed or print_preprocessed or print_tokens)) puts("Output:\n");
 
-        pie::analysis::LexicalAnalysis anal;
-        for (const auto& expr : exprs)
+        pie::analysis::LexicalScoping anal;
+        for (auto& expr : exprs)
             std::visit(anal, expr->variant());
 
         if (run) {
-            interp::Visitor visitor{std::move(ops)};
+
+
+            interp::Visitor visitor{std::move(anal).indeces};
             for (const auto& expr : exprs)
                 std::visit(visitor, expr->variant());
         }

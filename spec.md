@@ -8,7 +8,7 @@
     - [2.2 Reserved Punctuation](#22-reserved-punctuation)
     - [2.3 Literal Values](#23-literal-values)
     - [2.4 Comments](#24-comments)
-- [Chapter 3: Program Structure](#chapter-3-program-structure)
+- [Chapter 3: Grammer](#chapter-3-grammar)
 - [Chapter 4: Expressions](#chapter-4-expressions)
     - [4.1 Numbers](#41-numbers)
     - [4.2 Booleans](#42-booleans)
@@ -113,9 +113,137 @@ Any text that is between `.::` and `::.`.
 
 
 
-## Chapter 3: Program Structure
-A Pie program consists of 0 or more expressions:
-`program := expression*`
+## Chapter 3: Grammar
+A Pie program consists of 0 or more expressions.
+
+The grammar is stateful.
+There are 2 environments that represent the state of the grammar:
+- Scope Environment ($\pi$)
+- Namespace Environment ($\tau$)
+
+Both of these environments act like a stack, where you can $push$ and $pop$ from them.
+
+$\pi$ consist of a
+The environment $\delta$ acts like a stack of lists. The lists contain operator info.
+
+Operator info consists of:
+- Operator Name
+- Operator Kind
+- Operator Precedence
+```
+program := expression*
+
+expression :=
+      num
+    | bool
+    | string
+    | name
+    | list
+    | map
+    | grouping
+    | block
+    | assignment
+    | unary_op
+    | binary_op
+    | post_op
+    | circum_op
+    | op_call
+    | closure
+    | call
+    | class
+    | access
+    | namespace
+    | space_access
+    | use
+    | use_space
+    | import
+    | union
+    | match
+    | loop
+    | break
+    | continue
+    | type
+    | fix
+    | unary_fold
+    | separated_unary_fold
+    | binary_fold
+    | separated_binary_fold
+
+
+num :=
+      int | double
+int :=
+      -?[0-9]+
+double :=
+      \-?[0-9]+\.[0-9]+
+
+
+bool :=
+      "true"|"false"
+
+
+string :=
+      \"[^\"]*\"
+
+
+name :=
+      ^(?!\d+$)[a-zA-Z0-9!@#$%^&|*+~\-_\\\'\/<>\[\]]+$
+
+list :=
+      "{" (expression ("," expression)*)? "}"
+
+map :=
+      "{" ":" "}"
+    | "{" expression : expression ("," expression : expression)* "}"
+
+
+grouping :=
+      "(" expression ")"
+
+
+block :=
+      "{" (expression ";")+ "}"
+
+
+assignment :=
+      expression "=" expression
+
+```
+$$
+\frac{\text{Premise 1} \quad \text{Premise 2}}{\text{Conclusion}} \text{ (Rule Name)}
+$$
+```
+| unary_op
+| binary_op
+| post_op
+| circum_op
+| op_call
+| closure
+| call
+| class
+| access
+| namespace
+| space_access
+| use
+| use_space
+| import
+| union
+| match
+| loop
+| break
+| continue
+| type
+| fix
+| unary_fold
+| separated_unary_fold
+| binary_fold
+| separated_binary_fold
+
+
+````
+
+
+
 
 
 
@@ -123,7 +251,7 @@ A Pie program consists of 0 or more expressions:
 
 ### 4.1 Numbers
 Any number, integer or double, is a valid expression in Pie.
-Pie **must** implement big nums for its integer types
+Pie uses big nums for its integer types
 
 ### 4.2 Booleans
 Pie booleans have 2 literals: `true` and `false`.
@@ -131,23 +259,27 @@ Pie booleans have 2 literals: `true` and `false`.
 ### 4.3 Strings
 Anything that starts and ends with quotes (`"`) is considered a string.
 
-
 ### 4.4 Identifiers
 Identifiers are names that bind to values. What you know as "variables".
-Identifiers can consist of any combonation of the following letters, numbers, symbols:
-`abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&|*+~-_\'/<>[]`
 
+Identifier names can either be proper or improper.
 #### 4.4.1 Proper Names
-These are identifiers that contain a letter or one of the following symbols `!@#$%^&|*+~-_\'/<>[]` in them. These identifiers are special because they can be annotated with a type, unlike improper names.
+A name is proper if it has these three properties:
+- Contain **NO** spaces
+- Must **NOT** purely consist of numbers.
+- Consist of the following sigils only:
+    `abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&|*+~-_\'/<>[]`
+
+These identifiers are special because they can be annotated with a type, unlike improper names.
 
 #### 4.4.1 Improper Names
-Any valid Pie expression is a valid identifier. This means that all the following are valid identifiers:
+Any valid Pie expression, that is not a proper name already, is a valid improper name. This means that all the following are valid identifiers:
 - `5`
 - `"hello"`
 - `func(x, y)`
 - `1 + 2`
 
-These identifiers are improper, which means they cannot be annotatetd with a type.
+These identifiers cannot be annotated with a type.
 
 
 ### 4.5 Assignments
@@ -194,7 +326,7 @@ x = 2;
 x = "hi";
 
 
-a: Bool = truel
+a: Bool = true;
 a = false;
 
 

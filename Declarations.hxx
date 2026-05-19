@@ -1,8 +1,9 @@
 #pragma once
 
-#include <memory>
+#include <string>
 #include <string_view>
 #include <variant>
+#include <memory>
 
 #ifdef WEB_PIE
 using BigInt = long long;
@@ -18,57 +19,63 @@ namespace expr {
 // has to be forward declared bc we're using in in the class bellow
 
 using Node = std::variant<
-    const struct Num               *,
-    const struct Bool              *,
-    const struct String            *,
-    const struct Name              *,
-    // const struct Pack              *,
-    const struct List              *,
-    const struct Map               *,
-    const struct Expansion         *,
-    const struct UnaryFold         *,
-    const struct SeparatedUnaryFold*,
-    const struct BinaryFold        *,
-    const struct Assignment        *,
-    const struct Class             *,
-    const struct Union             *,
-    const struct Match             *,
-    const struct Type              *,
-    const struct Loop              *,
-    const struct Break             *,
-    const struct Continue          *,
-    const struct Access            *,
-    // const struct Cascade           *,
-    const struct Namespace         *,
-    const struct Use               *,
-    const struct Import               *,
-    const struct SpaceAccess       *,
-    const struct Grouping          *,
-    const struct UnaryOp           *, // op INNER
-    const struct BinOp             *, // LHS op RHS
-    const struct PostOp            *, // INNER op
-    const struct CircumOp          *, // op1 INNER op2
-    const struct OpCall            *, // mixfix operator: op0 arg0 op1 arg1 ...
-    const struct Call              *, // regular function call
-    const struct Closure           *,
-    const struct Block             *,
-    const struct Prefix            *, // SEE: UnaryOp, is def of prefix-unary
-    const struct Infix             *, // SEE: BinOp
-    const struct Suffix            *, // SEE: PostOp
-    const struct Exfix             *, // SEE: CircumOp
-    const struct Operator          *  // Example: IF a THEN b ELSE c
+    struct Num               *,
+    struct Bool              *,
+    struct String            *,
+    struct Name              *,
+ // struct Pack              *,
+    struct List              *,
+    struct Map               *,
+    struct Expansion         *,
+    struct UnaryFold         *,
+    struct SeparatedUnaryFold*,
+    struct BinaryFold        *,
+    struct Assignment        *,
+    struct Class             *,
+    struct Union             *,
+    struct Match             *,
+    struct Type              *,
+    struct Loop              *,
+    struct Break             *,
+    struct Continue          *,
+    struct Access            *,
+    struct Cascade           *,
+    struct Namespace         *,
+    struct Use               *,
+    struct UseSpace          *,
+    struct Import            *,
+    struct SpaceAccess       *,
+    struct Syntax            *,
+    struct Grouping          *,
+    struct UnaryOp           *,
+    struct BinOp             *,
+    struct PostOp            *,
+    struct CircumOp          *,
+    struct OpCall            *,
+    struct Call              *,
+    struct Closure           *,
+    struct Block             *,
+    struct Prefix            *,
+    struct Infix             *,
+    struct Suffix            *,
+    struct Exfix             *,
+    struct Operator          *
 >;
 
 
+struct Expr;
+using ExprPtr = std::shared_ptr<Expr>;
+
 struct Expr {
+    ssize_t ID{-1};
+
     virtual ~Expr() = default;
     virtual std::string stringify(const size_t indent = 0) const = 0;
     virtual bool involvesName(const std::string_view sv) const = 0;
-
-    virtual Node variant() const = 0;
+    virtual ExprPtr left() const = 0;
+    virtual Node variant() = 0;
 };
 
-using ExprPtr = std::shared_ptr<Expr>;
 
 
 } // namespace expr

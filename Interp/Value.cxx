@@ -64,31 +64,6 @@ std::string stringify(const Value& value, const size_t indent) {
 
     else if (std::holds_alternative<type::TypePtr>(value)) s = get<type::TypePtr>(value)->text();
 
-    else if (std::holds_alternative<NameSpace>(value)) {
-        const auto& v = get<NameSpace>(value);
-
-        if (v.members->members.empty())
-            s = "space { }";
-        else {
-            s = "space {\n";
-
-            const std::string space(indent + 4, ' ');
-            for (const auto& [name, type, value] : v.members->members) {
-                s += space + name.stringify() + ": " + type->text(indent + 4) + " = ";
-
-                const bool is_string = std::holds_alternative<std::string>(*value);
-                if (is_string) s += '\"';
-
-                s += stringify(*value, indent + 4);
-
-                if (is_string) s += '\"';
-
-                s += ";\n";
-            }
-
-            s += std::string(indent, ' ') + '}';
-        }
-    }
 
     else if (std::holds_alternative<Object>(value)) {
         const auto& v = std::get<Object>(value);
@@ -165,9 +140,9 @@ std::string stringify(const Value& value, const size_t indent) {
 
 
 inline std::ostream& operator<<(std::ostream& os, const Environment& env) {
-    for (const auto& [name, expr] : env){
-        const auto& [value, type] = expr;
-        os << name << ": " << type->text() << " = " << stringify(*value) << std::endl;
+    for (const auto& [ID, expr] : env){
+        const auto& [name, value, type] = expr;
+        os << '[' << ID << "] " << name.space << "::" << name.name << ": " << type->text() << " = " << stringify(*value) << std::endl;
     }
 
     return os;

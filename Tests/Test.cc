@@ -52,6 +52,632 @@ print(f(a, 1));
     REQUIRE(pie::test::run(src1) == "bye");
 }
 
+// LOOK AT THIS AT SOME POINT
+// C = class {
+//     pack: ...Int = 0;
+// };
+// makeC = (x: ...Int) => C(x);
+// std::print((makeC(1, 2, 3).pack + ...));
+
+
+
+
+TEST_CASE("Namespaces and Imports", "[Space][Import]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+space g {
+    space sheesh {
+        import Tests/module;
+    };
+};
+
+space wow {
+    use space g::sheesh::testing;
+};
+
+use wow::x;
+x = 10;
+
+print(g::sheesh::testing::x);
+print(wow::x);
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(10
+10)");
+
+
+
+    const auto src2 = R"(
+print = __builtin_print;
+
+space g {
+    space sheesh {
+        import Tests/module;
+    };
+};
+
+space wow {
+    use space g::sheesh::testing;
+};
+
+
+space ok {
+    use space g::sheesh;
+};
+
+g::sheesh::testing::x = 5;
+
+print(g::sheesh::testing::x);
+print(wow::x);
+print(ok::testing::x);
+)";
+
+    REQUIRE(pie::test::run(src2) == R"(5
+5
+5)");
+}
+
+
+
+TEST_CASE("Scoped Namespaces", "[Space]") {
+    const auto src1 = R"(
+{
+    space wow {
+        x = 1;
+    };
+};
+
+wow::x;
+)";
+
+    REQUIRE_THROWS(pie::test::run(src1));
+}
+
+
+TEST_CASE("Valid vs Invalid use space directive", "[Space]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+space interesting {
+
+    space mayo { x = 2; };
+
+    fuck = 1;
+};
+
+space wow { use space interesting; };
+
+print(interesting::mayo::x);
+print(wow::fuck);
+print(wow::mayo::x);
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(2
+1
+2)");
+
+
+    const auto src2 = R"(
+print = __builtin_print;
+
+space interesting { fuck = 1; };
+
+space wow { use space interesting; };
+
+print(mayo::x);
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+}
+
+
+
+TEST_CASE("Names Inside Scopes in Namespaces", "[Var][Space]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+
+space ns {
+    infix(+) add = (a, n) => __builtin_add(a, n);
+
+    x = 1;
+    y = 2;
+
+    space nested {
+        a = 3;
+        b = 4;
+    };
+};
+
+print(ns::nested::a);
+
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(3)");
+}
+
+
+
+TEST_CASE("Different Prefix/Infix Operators", "[Operator]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+prefix - = (a)    => __builtin_neg(a);
+infix  - = (a, b) => __builtin_sub(a, b);
+
+
+print(- - - 2 - - - - - - 5);
+
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(3)");
+
+
+    const auto src2 = R"(
+exfix [ : ] = (a)    => __builtin_print("exfix");
+suffix  ] = (a) => __builtin_print("suffix");
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+
+
+    const auto src3 = R"(
+print = __builtin_print;
+
+prefix - = (x)    => __builtin_neg(x);
+infix  - = (a, b) => __builtin_sub(a, b);
+
+infix < = (a, b) => __builtin_lt(a, b);
+
+exfix | : | = (x) => __builtin_conditional(x < 0, - x, x);
+
+
+print(| 1 |);
+print(| - 1 - 5 |);
+)";
+
+    REQUIRE(pie::test::run(src3) == "1\n6");
+}
+
+
+
+TEST_CASE("Assigned Operators", "[Operator]") {
+    const auto src1 = R"(
+(infix + = (a, b) => __builtin_add(a, b)) = 5;
+__builtin_print(infix + = (a, b) => __builtin_add(a, b));
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(5)");
+
+
+    const auto src2 = R"(
+(infix + = (a, b) => __builtin_add(a, b)) = 5;
+infix + = (a, b) => __builtin_add(a, b);
+
+1 + 2;
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+}
+
+
+
+
+TEST_CASE("Scoped Operators", "[Operator]") {
+    const auto src1 = R"(
+{
+    infix + = (a, b) => __builtin_add(a, b);
+    __builtin_print(1 + 2);
+};
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(3)");
+
+
+    const auto src2 = R"(
+{
+    infix + = (a, b) => __builtin_add(a, b);
+};
+1 + 2;
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+}
+
+
+
+
+TEST_CASE("Shaw's Test", "[Var]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+infix + = (a, b) => __builtin_add(a, b);
+infix - = (a, b) => __builtin_sub(a, b);
+
+infix > = (a, b) => __builtin_gt(a, b);
+infix < = (a, b) => __builtin_lt(a, b);
+
+
+xact = (f, g, r) => __builtin_conditional(
+    g.k,
+    {
+        g.k = f();
+        __builtin_conditional(r > 0, xact(f, g, r - 1), "");
+    },
+    ""
+);
+
+act = (f) => {
+  xact(f, class{ k = true; }(), 5);
+};
+
+while = (c, f) => {
+    act(() => __builtin_conditional(c(), { f(); true; }, false));
+};
+
+
+main = () => {
+    x = "meow";
+    x = 0;
+    while(() => x < 10, () => {
+        x = x + 1;
+        print(x);
+    });
+};
+
+main();
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(1
+2
+3
+4
+5
+6)");
+
+
+
+    const auto src2 = R"(
+
+print = __builtin_print;
+
+infix + = (a, b) => __builtin_add(a, b);
+infix - = (a, b) => __builtin_sub(a, b);
+
+infix > = (a, b) => __builtin_gt(a, b);
+infix < = (a, b) => __builtin_lt(a, b);
+
+
+xact = (f, g, r) => __builtin_conditional(
+    g.k,
+    {
+        g.k = f();
+        __builtin_conditional(r > 0, xact(f, g, r - 1), "");
+    },
+    ""
+);
+
+act = (f) => {
+  xact(f, class{ k = true; }(), 5);
+};
+
+while = (c, f) => {
+    act(() => {
+        __builtin_conditional(c(), { f(); true; }, false);
+    });
+};
+
+
+
+x = 0;
+while(() => x < 10, () => {
+    x = x + 1;
+    print(x);
+});
+)";
+
+    REQUIRE(pie::test::run(src2) == R"(1
+2
+3
+4
+5
+6)");
+}
+
+
+
+
+
+TEST_CASE("Shadowing Loop Variables", "[Loop][Var]") {
+    const auto src1 = R"(
+loop 5 => i {
+    loop 3 => i {
+        __builtin_print(i);
+    };
+    __builtin_print(i);
+};
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(0
+1
+2
+0
+0
+1
+2
+1
+0
+1
+2
+2
+0
+1
+2
+3
+0
+1
+2
+4)");
+}
+
+
+TEST_CASE("Nested Loops", "[Loop]") {
+    const auto src1 = R"(
+loop 5 => i {
+    x = loop 3 => e {
+        __builtin_conditional(
+            __builtin_eq(e, 2), break "broken", __builtin_print(i)
+        );
+    };
+    __builtin_conditional(
+        __builtin_eq(i, 3), continue, 0
+    );
+
+    __builtin_print(x);
+};
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(0
+0
+broken
+1
+1
+broken
+2
+2
+broken
+3
+3
+4
+4
+broken)");
+}
+
+
+
+TEST_CASE("Break 1", "[Loop]") {
+    const auto src1 = R"(
+r = loop 5 => i
+    __builtin_conditional(__builtin_eq(i, 2), break "meow", __builtin_print(i));
+
+__builtin_print(r);
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(0
+1
+meow)");
+}
+
+
+
+TEST_CASE("Continue 1", "[Loop]") {
+    const auto src1 = R"(
+loop 5 => i __builtin_conditional(__builtin_eq(i, 2), __builtin_print(continue), __builtin_print(i));
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(0
+1
+2
+3
+4)");
+
+
+    const auto src2 = R"(
+loop 5 => i __builtin_conditional(__builtin_eq(i, 2), continue, __builtin_print(i));
+)";
+
+    REQUIRE(pie::test::run(src2) == R"(0
+1
+3
+4)");
+}
+
+
+TEST_CASE("Break/Continue Outside Loop", "[Loop]") {
+    const auto src1 = R"(
+func1 = (x) => continue;
+func2 = (x, y) => __builtin_print(y);
+
+loop {1, 2, 3} => e {
+  func2(func1(e), "hey");
+  __builtin_print("hi");
+};
+)";
+
+    REQUIRE_THROWS(pie::test::run(src1));
+}
+
+
+
+TEST_CASE("Fib 10", "[Func]") {
+    const auto src1 = R"(
+fib = (n) => __builtin_conditional(
+    __builtin_lt(n, 2),
+    1,
+    __builtin_add(fib(__builtin_sub(n, 1)), fib(__builtin_sub(n, 2)))
+);
+
+loop 10 => i __builtin_print(fib(i));
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(1
+1
+2
+3
+5
+8
+13
+21
+34
+55)");
+}
+
+
+
+TEST_CASE("Arguments of Recursive Functions", "[Func][Param][Var]") {
+    const auto src1 = R"(
+func = (a, b) => __builtin_conditional(
+    a,
+    __builtin_print(a, b),
+    {
+        func(true, 100);
+        __builtin_print(a, b);
+    }
+);
+
+func(false, 1);
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(true 100
+false 1)");
+}
+
+
+
+TEST_CASE("Transitive Namespace", "[Space][Var]") {
+    const auto src1 = R"(
+space ns { a = 1; };
+
+space ns { x = a; };
+
+__builtin_print(ns::x);
+)";
+
+    REQUIRE(pie::test::run(src1) == "1");
+}
+
+
+
+TEST_CASE("Namespace Extension", "[Space][Var]") {
+    const auto src1 = R"(
+space ns {
+    a = 1;
+    b = 2;
+    c = 3;
+};
+
+space ns {
+    a = 5;
+    x = 10;
+    y = 20;
+};
+
+__builtin_print(ns::a);
+__builtin_print(ns::b);
+__builtin_print(ns::x);
+)";
+
+    REQUIRE(pie::test::run(src1) == "5\n2\n10");
+}
+
+
+
+TEST_CASE("Namespaces Aliases", "[Space][Var]") {
+    const auto src1 = R"(
+
+print = __builtin_print;
+
+space x {
+    a = 1;
+    space y {
+        b = 2;
+    };
+};
+
+print(x::a);
+print(x::y::b);
+
+x::y::b = 5;
+
+use space x;
+
+print(x::y::b);
+print(y::b);
+
+
+y::b = 10;
+
+print(x::y::b);
+print(y::b);
+
+use y::b;
+
+print(b);
+
+b = 20;
+
+print(b);
+print(x::y::b);
+print(y::b);
+
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(1
+2
+5
+5
+10
+10
+10
+20
+20
+20)");
+}
+
+
+
+TEST_CASE("Namespaces 2", "[Space]") {
+    const auto src1 = R"(
+print = __builtin_print;
+space x { a = 1; };
+print(a);
+)";
+
+    REQUIRE_THROWS_AS(pie::test::run(src1), pie::except::NameLookup);
+}
+
+
+TEST_CASE("Using Declaration Introduces References", "[Space][var]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+space x { a = 1; };
+
+use x::a;
+
+a = 5;
+print(a);
+print(x::a);
+
+)";
+
+    REQUIRE(pie::test::run(src1) == "5\n5");
+}
+
+
+
+
 TEST_CASE("Operator Precedence", "[Operator][Prec]") {
     const auto src1 = R"(
 infix(*  -) L1 = (a, b) => 1;
@@ -396,59 +1022,6 @@ print(add(g = 7, 1, c = 3, 2, 4, 5, f = 6, 1, "", 1.));
 
 
 
-// // I can't verify if this test case is right or not
-// // so comment it for now
-// TEST_CASE("Mutual Recursion", "[Func]") {
-//     const auto src = R"(
-// print = __builtin_print;
-
-// infix + = (a: Int, b: Int) => __builtin_add(a, b);
-// infix - = (a, b) => __builtin_sub(a, b);
-// infix < = (a, b) => __builtin_lt(a, b);
-// infix > = (a, b) => __builtin_gt(a, b);
-
-// mixfix(LOW +) if : then : else : = (cond: Bool, thn: Syntax, els: Syntax)
-//     => __builtin_eval(__builtin_conditional(cond, thn, els));
-
-// xact = (f1, g, r) => {
-//     if g.k then {
-//         g.k = f1();
-//         if (r > 0) then { xact(f1, g, r - 1); } else {};
-//         if (r > 0) then { xact(f1, g, r - 1); } else {};
-//     } else {};
-// };
-
-// act = (f2) => {
-//   xact(f2, class{ k = true; }(), 32);
-// };
-
-// while = (c, f) => {
-//     act(() => {
-//         if c() then { f(); true; } else false;
-//     });
-// };
-
-// x = 0;
-// while(() => x < 10, () => {
-//     x = x + 1;
-//     print(x);
-// });
-// )";
-
-//     REQUIRE(pie::test::run(src) == R"(1
-// 2
-// 3
-// 4
-// 5
-// 6
-// 7
-// 8
-// 9
-// 10)");
-// }
-
-
-
 TEST_CASE("Structural Subtyping + Functions", "[Class][Func]") {
     const auto src = R"(
 print = __builtin_print;
@@ -543,7 +1116,7 @@ Object {
 
 TEST_CASE("Self Outside Class", "[Class]") {
     const auto src = R"(
-f = () => std::print(self);
+f = () => print(self);
 C = class {
     x = 1;
 
@@ -560,7 +1133,7 @@ C(10).func();
 
 TEST_CASE("Using Variable Before Definition", "[Var]") {
     const auto src = R"(
-func1 = () => std::print(x);
+func1 = () => print(x);
 func2 = () => {
     x = 22;
     func1();
@@ -878,19 +1451,20 @@ func(17);
 
 
 TEST_CASE("Types as Values - List of Bool vs {Bool}", "[Type]") {
-    const auto src1 = R"(
-a: {Bool} = {true, false};
-v: {Type} = {Bool};
-x: v = {Bool};
-)";
-
+    const auto src1 = R"(a: {Bool} = {true, false};)";
     REQUIRE_NOTHROW(pie::test::run(src1));
 
-    const auto src2 = R"(
-x: {Bool} = {Bool};
-)";
+    const auto src2 = R"(v: {Type} = {Bool};)";
+    REQUIRE_NOTHROW(pie::test::run(src2));
 
-    REQUIRE_THROWS_AS(pie::test::run(src2), pie::except::TypeMismatch);
+    const auto src3 = R"(v: Type = {Bool};)";
+    REQUIRE_THROWS_AS(pie::test::run(src3), pie::except::TypeMismatch);
+
+    const auto src4 = R"(v: Type = :{Bool};)";
+    REQUIRE_NOTHROW(pie::test::run(src4));
+
+    const auto src5 = R"(x: {Bool} = {Bool};)";
+    REQUIRE_THROWS_AS(pie::test::run(src5), pie::except::TypeMismatch);
 }
 
 
@@ -971,36 +1545,36 @@ f(Any());
 }
 
 
-TEST_CASE("Class + Object Equality", "[Object][Class]") {
-    const auto src = R"(
-print = __builtin_print;
+// TEST_CASE("Class + Object Equality", "[Object][Class]") {
+//     const auto src = R"(
+// print = __builtin_print;
 
-x = 1;
-y = 1;
-ns = space {
-    x: Any = 2;
-    y = 2;
+// x = 1;
+// y = 1;
+// ns = space {
+//     x: Any = 2;
+//     y = 2;
 
-    printX1 = () => print(::x);
-    printX2 = () => print(x);
+//     printX1 = () => print(::x);
+//     printX2 = () => print(x);
 
-    printY1 = () => print(::y);
-    printY2 = () => print(y);
-};
+//     printY1 = () => print(::y);
+//     printY2 = () => print(y);
+// };
 
-ns::printX1();
-ns::printX2();
+// ns::printX1();
+// ns::printX2();
 
-ns::printY1();
-ns::printY2();
-)";
+// ns::printY1();
+// ns::printY2();
+// )";
 
 
-    REQUIRE(pie::test::run(src) == R"(1
-2
-2
-2)");
-}
+//     REQUIRE(pie::test::run(src) == R"(1
+// 2
+// 2
+// 2)");
+// }
 
 
 // TEST_CASE("Class + Object Equality", "[Object][Class]") {
@@ -1570,37 +2144,39 @@ TEST_CASE("List Types", "[Type]") {
 }
 
 
-TEST_CASE("See Through Value Mutability", "[Mutability]") {
-    const auto src = R"(
-print = __builtin_print;
 
-infix + = (a, b) => __builtin_add(a, b);
+//* Unwanted Behaviour Anyway
+// TEST_CASE("See Through Value Mutability", "[Mutability]") {
+//     const auto src = R"(
+// print = __builtin_print;
+
+// infix + = (a, b) => __builtin_add(a, b);
 
 
-x = 1;
+// x = 1;
 
-old = x("Hello 1");
-x = "Hello x"; .: different
+// old = x("Hello 1");
+// x = "Hello x"; .: different
 
-print(old);
-print(1);
-print(x);
+// print(old);
+// print(1);
+// print(x);
 
-(6 + 7)("Hi");
-6 + 7 = "Bye";
+// (6 + 7)("Hi");
+// 6 + 7 = "Bye";
 
-print(7 + 6); .: 13
-print(13); .: Hi
-print(6 + 7); .: Bye
-)";
+// print(7 + 6); .: 13
+// print(13); .: Hi
+// print(6 + 7); .: Bye
+// )";
 
-    REQUIRE(pie::test::run(src) == R"(1
-Hello 1
-Hello x
-13
-Hi
-Bye)");
-}
+//     REQUIRE(pie::test::run(src) == R"(1
+// Hello 1
+// Hello x
+// 13
+// Hi
+// Bye)");
+// }
 
 
 
@@ -1884,7 +2460,7 @@ bye)");
 
 
 TEST_CASE("Operator Overloading", "[Overload]") {
-    const auto src = R"(
+    const auto src1 = R"(
 print = __builtin_print;
 
 mixfix(HIGH -) if : : else : = (cond: Bool  , thn, els) => 1;
@@ -1897,9 +2473,22 @@ print(if ("") { 1; } else { 2; });
 
 )";
 
-    REQUIRE(pie::test::run(src) == R"(1
+    REQUIRE(pie::test::run(src1) == R"(1
 2
 3)");
+
+    const auto src2 = R"(
+print = __builtin_print;
+
+infix + = (a: Int, b: Int) => __builtin_add(a, b); 
+infix + = (a: String, b: String) => __builtin_concat(a, b); 
+
+print(1 + 2);
+print("1" + "2");
+)";
+
+    REQUIRE(pie::test::run(src2) == R"(3
+12)");
 
 }
 
@@ -1965,31 +2554,69 @@ print(1 + 1);
 }
 
 
-TEST_CASE("recursive namespaces", "[Namespace]") {
+// TEST_CASE("recursive namespaces", "[Space]") {
+//     const auto src = R"(
+// print = __builtin_print;
+
+// x = space {
+//     a = 1;
+//     y = 1;
+// };
+
+// x::y = x;
+
+// print(x::y::y::y::y::a);
+
+// )";
+
+//     REQUIRE(pie::test::run(src) == "1");
+// }
+
+
+
+// TEST_CASE("namespaces2", "[Space]") {
+//     const auto src = R"(
+// print = __builtin_print;
+
+// x = space {
+//     cls = class { meow: Int = 0; };
+
+//     v: String = "hi";
+
+//     o: cls = cls(1);
+
+//     func = (e: cls) => e.meow;
+
+//     infix(+) + = (a: cls, b: cls) => __builtin_add(a.meow, b.meow);
+
+//     y = space {
+//         n = 1;
+//     };
+// };
+
+
+// a = x::y::n;
+// print(a);
+// print(x::y::n);
+// x::y::n = 10;
+// print(a);
+// print(x::y::n);
+// a = 20;
+// print(a);
+// print(x::y::n);
+
+// )";
+
+//     REQUIRE(pie::test::run(src) == "1\n1\n1\n10\n20\n10");
+// }
+
+
+
+TEST_CASE("namespaces1", "[Space]") {
     const auto src = R"(
 print = __builtin_print;
 
-x = space {
-    a = 1;
-    y = 1;
-};
-
-x::y = x;
-
-print(x::y::y::y::y::a);
-
-)";
-
-    REQUIRE(pie::test::run(src) == "1");
-}
-
-
-
-TEST_CASE("namespaces2", "[Namespace]") {
-    const auto src = R"(
-print = __builtin_print;
-
-x = space {
+space x {
     cls = class { meow: Int = 0; };
 
     v: String = "hi";
@@ -2000,45 +2627,7 @@ x = space {
 
     infix(+) + = (a: cls, b: cls) => __builtin_add(a.meow, b.meow);
 
-    y = space {
-        n = 1;
-    };
-};
-
-
-a = x::y::n;
-print(a);
-print(x::y::n);
-x::y::n = 10;
-print(a);
-print(x::y::n);
-a = 20;
-print(a);
-print(x::y::n);
-
-)";
-
-    REQUIRE(pie::test::run(src) == "1\n1\n1\n10\n20\n10");
-}
-
-
-
-TEST_CASE("namespaces1", "[Namespace]") {
-    const auto src = R"(
-print = __builtin_print;
-
-x = space {
-    cls = class { meow: Int = 0; };
-
-    v: String = "hi";
-
-    o: cls = cls(1);
-
-    func = (e: cls) => e.meow;
-
-    infix(+) + = (a: cls, b: cls) => __builtin_add(a.meow, b.meow);
-
-    y = space {
+    space y {
         n = 1;
     };
 };
@@ -2121,9 +2710,7 @@ w = wow();
 a: w.inner = w.inner();
 )";
 
-    pie::test::run(src);
-
-    SUCCEED();
+    REQUIRE_NOTHROW(pie::test::run(src));
 }
 
 
@@ -2209,9 +2796,7 @@ f();
 
 )";
 
-    pie::test::run(src);
-
-    SUCCEED();
+    REQUIRE_NOTHROW(pie::test::run(src));
 }
 
 
@@ -2320,7 +2905,7 @@ add(z = 1);
 
 TEST_CASE("Named Arguments", "[Params]") {
 
-    const auto src =
+    const auto src1 =
 R"(
 print = __builtin_print;
 add = (x: Int, y, a: Int, b, c, d: Int, e: String, f, g, z: Double): Int => 0;
@@ -2329,5 +2914,5 @@ print(add(g = 7, 1, c = 3, 2, 4, 5, f = 6, 1, "", 1.0));
 )";
 
 
-    REQUIRE(pie::test::run(src) == "0");
+    REQUIRE(pie::test::run(src1) == "0");
 }

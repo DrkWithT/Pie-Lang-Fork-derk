@@ -28,7 +28,7 @@ INCLUDE = -I$(MP11_DIR)/include/ -I$(CPP_STD_EXT_DIR)/include/
 
 # Main target
 main: checklibs main.cc
-	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) $(OPT) main.cc -o $(OUTPUT_NAME)
+	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) $(OPT) -DNO_ERR_LOC main.cc -o $(OUTPUT_NAME)
 
 debug: checklibs main.cc
 	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -O0 main.cc -o $(OUTPUT_NAME) $(SAN)

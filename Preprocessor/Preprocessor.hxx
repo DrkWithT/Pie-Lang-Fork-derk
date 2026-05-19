@@ -4,10 +4,11 @@
 #include <print>
 #include <cctype>
 #include <string>
+#include <iostream>
+#include <sstream>
 #include <fstream>
 #include <unordered_set>
 #include <filesystem>
-#include <ranges>
 #include <stdexcept>
 
 inline namespace pie {
@@ -27,7 +28,7 @@ inline namespace pie {
 }
 
 
-bool findAndRemoveImport(std::string& src, size_t& index) {
+inline bool findAndRemoveImport(std::string& src, size_t& index) {
     using std::operator""sv;
 
     index = src.find("import");
@@ -41,14 +42,14 @@ bool findAndRemoveImport(std::string& src, size_t& index) {
     return true;
 }
 
-size_t findSpace(const std::string& src, size_t ind) {
+inline size_t findSpace(const std::string& src, size_t ind) {
     while (++ind < src.length() and not std::isspace(src[ind]) and src[ind] != ';');
 
     return ind;
 }
 
 
-void removeBlockComments(std::string& s) {
+inline void removeBlockComments(std::string& s) {
     for (size_t ind = s.find(".::"); ind != std::string::npos; ind = s.find(".::")) {
         const size_t end_ind = s.find("::.", ind); // look for end starting from index "ind"
         s.erase(ind, end_ind - ind + 3); // 3 == length("::.")
@@ -56,7 +57,7 @@ void removeBlockComments(std::string& s) {
 }
 
 
-void removeLineComments(std::string& s) {
+inline void removeLineComments(std::string& s) {
     for (size_t ind = s.find(".:"); ind != std::string::npos; ind = s.find(".:")) {
         const size_t end_ind = s.find("\n", ind); // look for end starting from index "ind"
         s.erase(ind, end_ind - ind + 1); // 3 == length("\n")
@@ -65,7 +66,7 @@ void removeLineComments(std::string& s) {
 
 
 // needed so we don't process imports inside comments sections.
-std::string removeComments(std::string src) {
+inline std::string removeComments(std::string src) {
     // removing block comments
     // doing that first so that we don't confuse ".:" with ".::"
     removeBlockComments(src);

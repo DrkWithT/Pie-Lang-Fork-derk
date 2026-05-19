@@ -2,8 +2,6 @@
 
 #include <string>
 #include <vector>
-#include <ranges>
-#include <algorithm>
 #include <memory>
 
 
@@ -20,16 +18,16 @@ inline namespace value {
     using ValuePtr = std::shared_ptr<Value>;
 }
 
-namespace interp {
-    struct Visitor;
-}
+namespace interp { class Visitor; }
 
 namespace type {
 
     using TypePtr = std::shared_ptr<struct Type>;
 
     struct Type {
-        virtual std::string text(const size_t indent = 0) const = 0;
+
+        ssize_t ID = -1;
+        virtual std::string text(const size_t = 0) const = 0;
 
         virtual bool involvesT(const Type&) const = 0;
         virtual bool typeCheck(interp::Visitor*, const value::Value&, const TypePtr&) const = 0;
@@ -151,19 +149,19 @@ namespace type {
     };
 
 
-    struct SpaceType : Type {
+    // struct SpaceType : Type {
 
-        std::string text(const size_t = 0) const override { return "Space"; }
-        bool involvesT(const Type& T) const override { return T == *this; }
-        bool typeCheck(interp::Visitor*, [[maybe_unused]] const value::Value& v, const TypePtr& other) const override { return *this >= *other; }
+    //     std::string text(const size_t = 0) const override { return "Space"; }
+    //     bool involvesT(const Type& T) const override { return T == *this; }
+    //     bool typeCheck(interp::Visitor*, [[maybe_unused]] const value::Value& v, const TypePtr& other) const override { return *this >= *other; }
 
-        // a namespace is only not greater than any other type...
-        bool operator>(const Type&) const override { return false; }
-        // ...so >= only needs to check for equality!
-        bool operator>=(const Type& other) const override { return *this == other; }
+    //     // a namespace is only not greater than any other type...
+    //     bool operator>(const Type&) const override { return false; }
+    //     // ...so >= only needs to check for equality!
+    //     bool operator>=(const Type& other) const override { return *this == other; }
 
-        TypePtr clone() const override { return std::make_shared<SpaceType>(*this); }
-    };
+    //     TypePtr clone() const override { return std::make_shared<SpaceType>(*this); }
+    // };
 
 
     struct FuncType final : Type {
@@ -284,40 +282,40 @@ namespace type {
 
 
 
-    inline const ExprType* isExpr(const TypePtr& t) noexcept {
-        return dynamic_cast<const ExprType*>(t.get());
+    inline ExprType* isExpr(const TypePtr& t) noexcept {
+        return dynamic_cast<ExprType*>(t.get());
     }
 
-    inline const FuncType* isFunction(const TypePtr& t) noexcept {
-        return dynamic_cast<const FuncType*>(t.get());
+    inline FuncType* isFunction(const TypePtr& t) noexcept {
+        return dynamic_cast<FuncType*>(t.get());
     }
 
-    inline const LiteralType* isClass(const TypePtr& t) noexcept {
-        return dynamic_cast<const LiteralType*>(t.get());
+    inline LiteralType* isClass(const TypePtr& t) noexcept {
+        return dynamic_cast<LiteralType*>(t.get());
     }
 
-    inline const ValueType* isValue(const TypePtr& t) noexcept {
-        return dynamic_cast<const ValueType*>(t.get());
+    inline ValueType* isValue(const TypePtr& t) noexcept {
+        return dynamic_cast<ValueType*>(t.get());
     }
 
-    inline const UnionType* isUnion(const TypePtr& t) noexcept {
-        return dynamic_cast<const UnionType*>(t.get());
+    inline UnionType* isUnion(const TypePtr& t) noexcept {
+        return dynamic_cast<UnionType*>(t.get());
     }
 
-    inline const VariadicType* isVariadic(const TypePtr& t) noexcept {
-        return dynamic_cast<const VariadicType*>(t.get());
+    inline VariadicType* isVariadic(const TypePtr& t) noexcept {
+        return dynamic_cast<VariadicType*>(t.get());
     }
 
-    inline const ListType* isList(const TypePtr& t) noexcept {
-        return dynamic_cast<const ListType*>(t.get());
+    inline ListType* isList(const TypePtr& t) noexcept {
+        return dynamic_cast<ListType*>(t.get());
     }
 
-    inline const MapType* isMap(const TypePtr& t) noexcept {
-        return dynamic_cast<const MapType*>(t.get());
+    inline MapType* isMap(const TypePtr& t) noexcept {
+        return dynamic_cast<MapType*>(t.get());
     }
 
-    inline const BuiltinType* isBuiltin(const TypePtr& t) noexcept {
-        return dynamic_cast<const BuiltinType*>(t.get());
+    inline BuiltinType* isBuiltin(const TypePtr& t) noexcept {
+        return dynamic_cast<BuiltinType*>(t.get());
     }
 
     inline bool isAny(const TypePtr& t) noexcept {

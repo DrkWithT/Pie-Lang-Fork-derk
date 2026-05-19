@@ -2,7 +2,7 @@
 
 ![Pie Lang Logo](assets/images/PieLang_Logo_cool_bg.png)
 
-[![C++ CI](https://github.com/PiCake314/Pie/actions/workflows/cpp.yml/badge.svg)](https://github.com/PiCake314/Pie/actions/workflows/cpp.yml)
+[![C++ CI](https://github.com/AliAlmutawaJr/Pie/actions/workflows/cpp.yml/badge.svg)](https://github.com/AliAlmutawaJr/Pie/actions/workflows/cpp.yml)
 
 ## Philosophy
 <!-- This language aims to be unique, but it also should still feel familiar. Here are some of it's "features": -->
@@ -25,6 +25,7 @@
 - [Match Expressions](#match-expressions)
 - [Namespaces](#namespaces)
 - [Scopes](#scopes)
+- [Import System](#import-system)
 - [Operators](#operators)
 - [Overloading](#overloading)
 - [Packs](#packs)
@@ -278,17 +279,16 @@ Of course, you can have both conditions and pipes in the same case.
 
 ## Namespaces
 
-Like everything else in this language, Namespaces are expressions too, and they yield a value!
-Declare a namespace by using the `space` keyword. Assign a namespace to a variable in order to name it:
+Declare a namespace by using the `space` keyword followed by a proper name:
 
 ```pie
-my_space = space {
+space my_space {
     __builtin_print("start");
 
     decl1: Int = 1;
     ID: (Any): Any = (x) => x;
 
-    nested = space {
+    space nested {
         __builtin_print("inner");
         decl2 = "Hi";
     };
@@ -297,25 +297,25 @@ my_space = space {
 };
 ```
 
-Namespaces could seem like just syntactic sugar for classes, but they're not! There is a major difference which is the fact that you can run arbitrary code inside namespaces. A class may only have assignments.
+Namespaces could seem like just syntactic sugar for classes, but they're not! There is a major difference which is the fact that you can run arbitrary code inside namespaces. A class may consist of assignments only.
 
-To access a member of a `namespace`, use the "scope resolution operator", or `::`:
+To access a member of a `space`, use the "scope resolution operator", or `::`:
 
 ```pie
-x = space { a = 1; };
+space x { a = 1; };
 __builtin_print(x::a);
 ```
 
-Assigning a namespace to an existing namespace will consolidate the two namespaces onto the first:
+You may extend the contents of a namespace by declaring again:
 
 ```pie
-ns = space {
+space ns {
     a = 1;
     b = 2;
     c = 3;
 };
 
-ns = space {
+space ns {
     a = 5;
     x = 10;
     y = 20;
@@ -327,26 +327,42 @@ __builtin_print(ns::x); .: prints 10
 ```
 This allows you to split code that belongs to a single namespace in multiple different files and have all the declarations be in the same namespace.
 
-**Keep in mind**, if you assign a namespace to another value, it loses its content:
+**Keep in mind**, that namespaces are not variables. You can have a variable named the same name as a namespace!
 
+Sample 1:
 ```pie
-x = space { a = 1; };
+space x { };
 x = 5;
-x = space { b = 1; };
-
-__builtin_print(x::a); .: ERROR!
+__builtin_print(x); .: prints 5
 ```
-### `use` directive
-
-The `use` directive pulls all the names in from a namespace into the current namespace.
+Sample 2:
 ```pie
-ns = space {
+space x { x = 2; };
+__builtin_print(x); .: prints 2
+```
+
+### `use` declaration
+A `use` declaration introduces a name from one namespace into another:
+```pie
+space x { a = 1; };
+use x::a;
+a = 5;
+
+__builtin_print(a);    .: prints 5
+__builtin_print(x::a); .: prints 5
+```
+
+### `use space` directive
+
+The `use space` directive pulls all the names in from a namespace into the current namespace. It works as if all the names inside the given namespace had a `use` declaration applied on them:
+```pie
+space ns {
     x = 1;
     y = "hi";
     z = 3.14;
 };
 
-use ns;
+use space ns;
 
 __builtin_print(x);
 ```
@@ -373,6 +389,48 @@ The following line is not an emtpy scope, but rather, and empty list!!
 ```pie
 x = { };
 ```
+
+
+
+## Import System
+
+`import` runs the specified file, then pull all the _global_ namespaces into the current namespaces. Any global in the specified module will **NOT** be imported.
+
+in `../folder/module.pie`:
+```pie
+global_var = 1;
+
+space global_space {
+    x = 1;
+};
+
+{
+    space local_space {
+        y = 2;
+    };
+}
+
+__builtin_print("in module");
+```
+
+in `main.pie`
+```pie
+import ../folder/module;
+import ../folder/module;
+
+__builtin_print(global_space::x);
+```
+Running the file gives the following output:
+```
+in module
+in module
+1
+```
+
+`local_space` is not accessible from `main.pie` since it isn't a top level namespace.
+The `import` expression yields the last expression inside the imported file.
+Note that `.pie` is omitted in the `import` directive.
+
 
 ## Operators
 
@@ -486,32 +544,6 @@ The above expression evaluates right-to-left:
 ##### Separated binary right fold
 `(sep + ... + pack + init)`
 
-
-
-# Import System
-
-`import` is the only keyword that is not recognized by the interpreter. Instead, it's a pre-processor directive:
-
-in `../folder/file.pie`:
-```pie
-x = 1;
-```
-
-in `main.pie`
-```pie
-import ../folder/file;
-import ../folder/file;
-
-__builtin_print(x);
-```
-
-The resulting file:
-```pie
-x = 1;
-
-__builtin_print(x);
-```
-Note that `.pie` is omitted in the `import` directive.
 
 ## Builtins
 
@@ -756,14 +788,14 @@ Binaries exist for:
 2- Macos x86
 2- Macos Apple Silicon
 
-Check the [release section](https://github.com/PiCake314/Pie/releases) for the download link
+Check the [release section](https://github.com/AliAlmutawaJr/Pie/releases) for the download link
 
 
 #### Build from source
 Make sure you have `git`, `make`, and a C++ compiler that supports C++23. Then run the following in the terminal:
 
 ```
-git clone https://github.com/PiCake314/Pie
+git clone https://github.com/AliAlmutawaJr/Pie
 cd Pie
 make
 ```
@@ -773,12 +805,11 @@ make
 
 #### in order of priority
 
-
-- [ ] Lexically Scoped Operators
-- [ ] Remove preprocessor
+- [ ] Importing Operators
+- [ ] Fix variadic expansion
 - [ ] File IO
+- [ ] Cascade operator `..`
 - [ ] Use Big Int instead of `int64_t`
-- [ ] Allow variadics of Syntax type
 - [ ] Add default values to function parameters
 - [ ] Make `=` and `=>` overloadable
 - [ ] Fix builtin reset (value-reset, reset/name-reset) 
@@ -793,6 +824,15 @@ make
 ---
 
 ### Done
+- [x] Remove preprocessor
+- [x] Add `Syntax` literals instead of relying on receiver's type
+- [x] Lexically Scoped Operators
+- [x] Capture variables by reference in lambdas
+- [x] Using delcarations introduce "references"
+- [x] fix `use x` and `use space ns`;
+- [x] Pie's internal environment system now uses unique IDs per unique variable, which helps wit shadowing
+- [x] Made namespaces parse-time things instead of runtime
+- [x] Added Lexical Scoping (1.5)
 - [x] Functions as types (concepts)
 - [x] Eager Parameter Evaluation (Lazy Function Parameter Types)
 - [x] add `lex` and `value` namespaces to codebase
@@ -836,11 +876,11 @@ make
 
 ### Discarded
 
+- ~~Allow variadics of Syntax type~~
 - ~~Add collections~~
 - ~~Add iterators~~
 - ~~Add looping~~
 - ~~Add method operators..?~~
-- ~~Cascade operator `..`~~
 
 
 ## Community
@@ -848,6 +888,11 @@ make
 
 ## Contributors
 - [ShawSumma](https://github.com/ShawSumma)
+- [DerkT](https://github.com/DrkWithT)
+
+
+##### Website forked from:
+- [TheDevConnor](https://github.com/TheDevConnor)
 
 
 ## Quotes About Pie Lang:

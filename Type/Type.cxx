@@ -46,14 +46,14 @@ namespace type {
         if (dynamic_cast<const TryReassign*>(&other)) return true;
 
         const auto type = text();
-        return type == "Syntax" or (type == "Any" and other.text() != "Any");
+        return type == "Any" and other.text() != "Any";
     }
 
     bool BuiltinType::operator>=(const Type& other) const {
         if (dynamic_cast<const TryReassign*>(&other)) return true;
 
         const auto& type = text();
-        return type == "Syntax" or type == "Any" or type == other.text();
+        return type == "Any" or type == other.text();
     }
 
 
@@ -61,9 +61,9 @@ namespace type {
     // * Value Type * //
     std::string ValueType::text(const size_t indent) const { return stringify(*val, indent); }
 
-    bool ValueType::typeCheck(interp::Visitor*, [[maybe_unused]] const value::Value& v, const TypePtr& other) const {
+    bool ValueType::typeCheck(interp::Visitor*, const value::Value& v, const TypePtr& other) const {
         if (std::holds_alternative<expr::Closure>(*val)) { // concept case. test the upcoming value
-
+            util::error();
         }
 
         if (*val == v) return true;
@@ -76,8 +76,7 @@ namespace type {
     // * Concept Type * //
     std::string ConceptType::text(const size_t indent) const { return stringify(*func, indent); }
 
-    bool ConceptType::typeCheck(interp::Visitor* visitor, [[maybe_unused]] const value::Value& v, const TypePtr& other) const {
-        // const auto* f = dynamic_cast<const expr::Closure*>(func.get());
+    bool ConceptType::typeCheck(interp::Visitor* visitor, const value::Value& v, const TypePtr& other) const {
         const auto& f = get<expr::Closure>(*func);
         // interp::Visitor::ScopeGuard sg{visitor, interp::Visitor::EnvTag::FUNC, f.args_env, f.env};
         interp::Visitor::ScopeGuard sg{visitor, interp::Visitor::EnvTag::FUNC, f.env};
@@ -85,12 +84,18 @@ namespace type {
 
         if (not f.type.params[0]->typeCheck(visitor, v, other)) return false;
 
-        sg.addEnv({{f.params[0],
-            {
-                std::make_shared<value::Value>(v),
-                other
-            }}}
-        );
+
+        // concepts are unary functions, meaning 1 parameter only!
+        sg.addEnv({
+        {f.params[0].ID,
+
+                {
+                    {f.params[0].name},
+                    std::make_shared<value::Value>(v),
+                    other
+                }
+            }
+        });
 
 
         auto ret = visitor->checkReturnType(std::visit(*visitor, f.body->variant()), f.type.ret);
@@ -147,7 +152,7 @@ namespace type {
         }
 
         const auto type = text();
-        return type == "Syntax" or (type == "Any" and other.text() != "Any");
+        return type == "Any" and other.text() != "Any";
     }
 
 
@@ -174,7 +179,7 @@ namespace type {
         }
 
         const auto type = text();
-        return type == "Syntax" or type == "Any"; // or type == other.text();
+        return type == "Any"; // or type == other.text();
     }
 
 

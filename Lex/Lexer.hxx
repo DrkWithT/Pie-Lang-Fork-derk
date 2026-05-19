@@ -12,8 +12,11 @@
 
 #include "Token.hxx"
 #include "../Utils/utils.hxx"
-#include "../Parser/Precedence.hxx"
 
+#include <cctype>
+#include <string>
+#include <string_view>
+#include <vector>
 
 
 inline namespace pie {
@@ -22,7 +25,7 @@ inline namespace lex {
 
 inline TokenKind keyword(const std::string_view word) noexcept {
     using enum TokenKind;
-         if (word == "mixfix") return MIXFIX;
+    if (word == "mixfix") return MIXFIX;
     else if (word == "prefix") return PREFIX;
     else if (word == "infix" ) return INFIX ;
     else if (word == "suffix") return SUFFIX;
@@ -47,18 +50,6 @@ inline TokenKind keyword(const std::string_view word) noexcept {
 
     else if (word == "true"  ) return BOOL;
     else if (word == "false" ) return BOOL;
-
-    // PRIORITIES
-    // else if (word == "LOW"       ) return PR_LOW;
-    // else if (word == "ASSIGNMENT") return PR_ASSIGNMENT;
-    // else if (word == "SUM"       ) return PR_SUM;
-    // else if (word == "PROD"      ) return PR_PROD;
-    // else if (word == "INFIX"     ) return PR_INFIX;
-    // else if (word == "PREFIX"    ) return PR_PREFIX;
-    // else if (word == "POSTFIX"   ) return PR_POSTFIX;
-    // else if (word == "CALL"      ) return PR_CALL;
-    // else if (word == "HIGH"      ) return PR_HIGH;
-
 
     return NAME;
 }
@@ -198,8 +189,8 @@ inline bool validNameChar(const char c) noexcept {
             case '=':
                 if (src.at(index + 1) == '>')
                     lines.back().push_back({FAT_ARROW, {src[index], src[++index]}});
-                else if ((src[index + 1] == '='))
-                    lines.back().push_back({NAME, {src[index], src[++index]}});
+                // else if ((src[index + 1] == '='))
+                //     lines.back().push_back({NAME, {src[index], src[++index]}});
                 else
                     lines.back().push_back({ASSIGN, {src[index]}});
 
@@ -222,8 +213,7 @@ inline bool validNameChar(const char c) noexcept {
                 else if (src[index + 1] == '.' and src.at(index + 2) == '.')
                     lines.back().push_back({ELLIPSIS, {src[index], src[++index], src[++index]}});
                 else if (src[index + 1] == '.')
-                    // lines.back().push_back({CASCADE , {src[index], src[++index],             }});
-                    util::error();
+                    lines.back().push_back({CASCADE , {src[index], src[++index],             }});
                 else
                     lines.back().push_back({DOT, {src[index]}});
 
@@ -239,6 +229,8 @@ inline bool validNameChar(const char c) noexcept {
                 lines.back().push_back({SEMI, {src[index]}});
                 lines.push_back({});
                 break;
+
+            case '`': lines.back().push_back({BACKTICK, {src[index]}}); break;
 
             // case '\n': lines.back().clear(); break;
             case '\n':

@@ -1,8 +1,5 @@
 #pragma once
 
-// #include <iostream>
-// #include <print>
-// #include <cmath>
 #include <string>
 #include <filesystem>
 #include <vector>
@@ -13,7 +10,6 @@
 #include <ranges>
 #include <variant>
 #include <optional>
-// #include <numeric>
 #include <memory>
 
 #include "../Utils/utils.hxx"
@@ -25,17 +21,26 @@
 
 inline namespace pie {
 
+namespace interp { struct NameSpace; }
+
 inline namespace value {
     struct Value;
     using ValuePtr = std::shared_ptr<Value>;
 
     struct Members;
     using Object      = std::pair<type::TypePtr, std::shared_ptr<Members>>;
-    // using Value       = std::variant<ssize_t, double, bool, std::string, expr::Closure /*, ClassValue, expr::Union, */, type::TypePtr, NameSpace, Object, expr::Node, PackList, ListValue, MapValue>;
+
+    struct SpaceRef {
+        std::string name;
+        interp::NameSpace* space = nullptr;
+
+        bool isRef() const { return space != nullptr; }
+    };
 
     using Environment = std::unordered_map<
-        std::string,
-        std::pair<
+        size_t,
+        std::tuple<
+            SpaceRef,
             value::ValuePtr,
             type::TypePtr
         >
@@ -43,17 +48,18 @@ inline namespace value {
 }
 
 namespace expr { struct Fix; }
-using Operators  = std::unordered_map<std::string, std::unique_ptr<expr::Fix>>;
+using Operators  = std::unordered_map<std::string, std::shared_ptr<expr::Fix>>;
 
-
-
-// template <>
-// struct std::hash<expr::ExprPtr> {
-//     size_t operator()(const expr::ExprPtr& expr) const { return std::hash<std::string>{}(expr->stringify()); }
-// };
 
 
 namespace expr {
+
+struct StringID {
+    std::string name;
+    ssize_t ID = -1;
+};
+
+
 
 struct Num : Expr {
     std::string num;
@@ -61,9 +67,12 @@ struct Num : Expr {
     explicit Num(std::string n) noexcept : num{std::move(n)} {}
 
     std::string stringify(const size_t = 0) const override { return num; }
+
     bool involvesName(const std::string_view sv) const override { return sv == stringify(); }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Num>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -73,9 +82,12 @@ struct Bool : Expr {
     explicit Bool(const bool b) noexcept : boolean{b} {}
 
     std::string stringify(const size_t = 0) const override { return boolean ? "true" : "false"; }
+
     bool involvesName(const std::string_view sv) const override { return sv == stringify(); }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Bool>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -85,9 +97,12 @@ struct String : Expr {
     explicit String(std::string s) noexcept : str{std::move(s)} {}
 
     std::string stringify(const size_t = 0) const override { return '"' + str + '"'; }
+
     bool involvesName(const std::string_view sv) const override { return sv == stringify(); }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<String>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -97,9 +112,12 @@ struct Name : Expr {
     explicit Name(std::string n) noexcept : name{std::move(n)} {}
 
     std::string stringify(const size_t = 0) const override { return name; }
+
     bool involvesName(const std::string_view sv) const override { return sv == stringify(); }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Name>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -121,7 +139,7 @@ struct Name : Expr {
 //         return s;
 //     }
 
-//     Node variant() const override { return this; }
+//     Node variant() override { return this; }
 // };
 
 
@@ -150,7 +168,9 @@ struct List : Expr {
         });
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<List>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -181,7 +201,9 @@ struct Map : Expr {
         });
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Map>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -199,7 +221,9 @@ struct Expansion : Expr {
         return sv == stringify() or pack->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Expansion>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -223,7 +247,9 @@ struct UnaryFold : Expr {
         return sv == stringify() or pack->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<UnaryFold>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -244,7 +270,9 @@ struct SeparatedUnaryFold : Expr {
         return sv == stringify() or lhs->involvesName(sv) or rhs->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<SeparatedUnaryFold>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -279,12 +307,13 @@ struct BinaryFold : Expr {
         return sv == stringify() or pack->involvesName(sv) or init->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<BinaryFold>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
 struct Assignment : Expr {
-    // std::string name;
     ExprPtr lhs;
     type::TypePtr type;
     ExprPtr rhs;
@@ -306,7 +335,9 @@ struct Assignment : Expr {
         return sv == stringify() or lhs->involvesName(sv) or rhs->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return lhs->left(); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -344,15 +375,16 @@ struct Class : Expr {
         );
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Class>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
 struct Union : Expr {
     std::vector<type::TypePtr> types;
 
-    Union(std::vector<type::TypePtr> ts) noexcept
-    : types{std::move(ts)} { }
+    Union(std::vector<type::TypePtr> ts) noexcept : types{std::move(ts)} {}
 
     std::string stringify(const size_t indent = 0) const override {
         std::string s = "union {\n";
@@ -374,7 +406,9 @@ struct Union : Expr {
          return false;
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Union>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -382,13 +416,13 @@ struct Match : Expr {
     struct Case {
         struct Pattern {
             struct Single {
-                std::string name;
+                StringID name;
                 type::TypePtr type;
                 ExprPtr value;
             };
 
             using Patterns = std::vector<std::unique_ptr<Pattern>>;
-            struct Structure { std::string type_name; Patterns patterns; };
+            struct Structure { StringID type_name; Patterns patterns; };
 
 
             std::variant<
@@ -399,7 +433,7 @@ struct Match : Expr {
             explicit Pattern(Single single) : pattern{std::move(single)} {}
 
             Pattern(std::string name, Patterns structure)
-            : pattern{Structure{std::move(name), std::move(structure)}}
+            : pattern{Structure{{std::move(name)}, std::move(structure)}}
             {}
         };
 
@@ -437,7 +471,9 @@ struct Match : Expr {
         return sv == stringify() or expr->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return nullptr; }
+
+    Node variant() override { return this; }
 
 
 private:
@@ -452,12 +488,12 @@ private:
             if (pat.value) def = " = " + pat.value->stringify(indent);
 
 
-            return pat.name + type + def;
+            return pat.name.name + type + def;
         }
 
         const auto& [name, patterns] = get<Case::Pattern::Structure>(pattern.pattern);
 
-        std::string s = name + '(';
+        std::string s = name.name + '(';
 
         for (std::string comma = ""; const auto& pat : patterns) {
             s += comma + stringifyPattern(*pat, indent);
@@ -480,17 +516,22 @@ struct Type : Expr {
         return false; // temp
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override {
+        return std::make_shared<Type>(type->clone());
+    }
+
+    Node variant() override { return this; }
 };
 
 
 struct Loop : Expr {
     ExprPtr kind;
-    ExprPtr var;
+    // ExprPtr var;
+    StringID var;
     ExprPtr body;
     ExprPtr els;
 
-    Loop(ExprPtr b, ExprPtr v = nullptr, ExprPtr k = nullptr, ExprPtr e = nullptr) noexcept
+    Loop(ExprPtr b, std::string v = "", ExprPtr k = nullptr, ExprPtr e = nullptr) noexcept
     : kind{std::move(k)}, var{std::move(v)}, body{std::move(b)}, els{std::move(e)}
     {}
 
@@ -499,7 +540,7 @@ struct Loop : Expr {
         std::string s = "loop ";
 
         if (kind) s += kind->stringify(indent + 4) + " => ";
-        if (var ) s += var ->stringify(indent + 4) + " ";
+        if (not var.name.empty()) s += var.name + " ";
 
         s += body->stringify(indent + 4);
 
@@ -511,12 +552,14 @@ struct Loop : Expr {
     bool involvesName(const std::string_view sv) const override {
         return sv == stringify()
             or kind->involvesName(sv)
-            or var ->involvesName(sv)
+            or sv == var.name
             or body->involvesName(sv)
             or els ->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Loop>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -535,7 +578,9 @@ struct Break : Expr {
         return sv == stringify() or expr->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Break>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -554,7 +599,9 @@ struct Continue : Expr {
         return sv == stringify() or expr->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Continue>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -574,42 +621,50 @@ struct Access : Expr {
         return sv == stringify() or var->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return var->left(); }
+
+    Node variant() override { return this; }
 };
 
 
-// struct Cascade : Expr {
-//     ExprPtr var;
-//     std::string name;
+struct Cascade : Expr {
+    ExprPtr var;
+    std::vector<ExprPtr> members;
+    // ExprPtr member;
 
-//     Cascade(ExprPtr v, std::string n) noexcept
-//     : var{std::move(v)}, name{std::move(n)}
-//     {}
+    Cascade(ExprPtr v, std::vector<ExprPtr> m) noexcept
+    : var{std::move(v)}, members{std::move(m)}
+    {}
 
-//     std::string stringify(const size_t indent = 0) const override {
-//         return var->stringify(indent) + '.' + name;
-//     }
+    std::string stringify(const size_t = 0) const override {
+        // return var->stringify(indent) + ".." + 
+        return "cascade";
+    }
 
-//     bool involvesName(const std::string_view sv) const override {
-//         return sv == stringify() or var->involvesName(sv);
-//     }
+    bool involvesName(const std::string_view) const override {
+        // return sv == stringify() or var->involvesName(sv) or sv == member->involvesName(sv);
+        return false;
+    }
 
-//     Node variant() const override { return this; }
-// };
+    ExprPtr left() const override { return var->left(); }
+
+    Node variant() override { return this; }
+};
 
 
 struct Namespace : Expr {
-    std::vector<ExprPtr> expressions;
+    std::string name;
+    std::vector<ExprPtr> space;
 
 
-    explicit Namespace(std::vector<ExprPtr> exprs) noexcept
-    : expressions{std::move(exprs)} {}
+    explicit Namespace(std::string n, std::vector<ExprPtr> exprs) noexcept
+    : name{std::move(n)}, space{std::move(exprs)} {}
 
     std::string stringify(const size_t indent = 0) const override {
-        std::string s = "space {\n";
+        std::string s = "space " + name + " {\n";
 
-        for (const std::string space(indent + 4, ' '); auto&& expr : expressions) {
-            s += space + expr->stringify(indent + 4) + ";\n";
+        for (const std::string spacing(indent + 4, ' '); const auto& expr : space) {
+            s += spacing + expr->stringify(indent + 4) + ";\n";
         }
 
         return s + std::string(indent, ' ') + "}";
@@ -619,27 +674,76 @@ struct Namespace : Expr {
         return false; // temp
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Namespace>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
 struct Use : Expr {
-    ExprPtr ns;
+    bool global;
+    // last name is not a space
+    std::vector<std::string> spaces;
+    StringID name;
 
-    explicit Use(ExprPtr n) noexcept
-    : ns{std::move(n)} {}
+    explicit Use(bool g, std::vector<std::string> ns, std::string n) noexcept
+    : global{g}, spaces{std::move(ns)}, name{std::move(n)} {}
 
 
-    std::string stringify(const size_t indent = 0) const override {
-        return "use " + ns->stringify(indent);
+    std::string stringify(const size_t = 0) const override {
+        std::string s;
+
+        for (const auto& space : spaces)
+            s += space + "::";
+
+        return (global ? "use ::" : "use" ) + s + "::" + name.name;
     }
 
     bool involvesName(const std::string_view sv) const override {
-        return sv == stringify() or ns->involvesName(sv);
+        return sv == stringify();
     }
 
+    ExprPtr left() const override { return std::make_shared<Use>(*this); }
 
-    Node variant() const override { return this; }
+    Node variant() override { return this; }
+};
+
+
+struct UseSpace : Expr {
+    bool global;
+    std::vector<std::string> spaces;
+    ssize_t last_item_id;
+
+    std::vector<std::pair<std::string, std::string>> children; // children full name against short name
+
+
+    explicit UseSpace(bool g, std::vector<std::string> ns) noexcept
+    : global{g}, spaces{std::move(ns)} {}
+
+
+    std::string stringify(const size_t = 0) const override {
+        std::string s = "use space";
+
+        if (global) {
+            for (const auto& space : spaces)
+                s += "::" + space;
+        }
+        else {
+            s += spaces[0];
+            for (const auto& space : spaces | std::views::drop(1))
+                s += "::" + space;
+        }
+
+        return s;
+    }
+
+    bool involvesName(const std::string_view sv) const override {
+        return sv == stringify();
+    }
+
+    ExprPtr left() const override { return std::make_shared<UseSpace>(*this); }
+
+    Node variant() override { return this; }
 };
 
 struct Import : Expr {
@@ -658,45 +762,80 @@ struct Import : Expr {
 
     bool involvesName(const std::string_view) const override { return false; }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Import>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
 struct SpaceAccess : Expr {
-    ExprPtr space;
-    std::string member;
+    bool global;
+    std::vector<std::string> spaces;
+    StringID name;
 
 
-    SpaceAccess(ExprPtr s, std::string m) noexcept
-    : space{std::move(s)}, member{std::move(m)} {}
+    SpaceAccess(bool g, std::vector<std::string> s, std::string n) noexcept
+    : global{g}, spaces{std::move(s)}, name{std::move(n)} {}
 
     std::string stringify(const size_t = 0) const override {
-        if (space) return space->stringify() + "::" + member;
 
-        return "::" + member;
+        std::string s;
+
+        for (const auto& sp : spaces)
+            s += sp + "::";
+
+        return (global ? "::" : "") + s + name.name;
     }
 
-    bool involvesName(const std::string_view sv) const override {
-        return sv == stringify() or space->involvesName(sv);
+    bool involvesName(const std::string_view) const override {
+        return false; // qualified names don't involve other names!
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return nullptr; }
+
+    Node variant() override { return this; }
 };
 
 
-struct Grouping : Expr {
+struct Syntax : Expr {
     ExprPtr expr;
-    Grouping(ExprPtr e) noexcept : expr{std::move(e)} {}
+    Syntax(ExprPtr e) noexcept : expr{std::move(e)} {}
 
     std::string stringify(const size_t indent = 0) const override {
-        return '(' + expr->stringify(indent) + ')';
+        return '`' + expr->stringify(indent + 4) + '`';
     }
 
     bool involvesName(const std::string_view sv) const override {
         return sv == stringify() or expr->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Syntax>(*this); }
+
+    Node variant() override { return this; }
+};
+
+
+
+// Only reason this is needed is to distinguish between expressions like
+// 1 + 2 and (1 + 2)
+// since they could get assigned 2 different values
+// but is this the behaviour that I want?
+struct Grouping : Expr {
+    ExprPtr expr;
+    Grouping(ExprPtr e) noexcept : expr{std::move(e)} {}
+
+    std::string stringify(const size_t indent = 0) const override {
+        // return '(' + expr->stringify(indent) + ')';
+        return expr->stringify(indent);
+    }
+
+    bool involvesName(const std::string_view sv) const override {
+        return sv == stringify() or expr->involvesName(sv);
+    }
+
+    ExprPtr left() const override { return std::make_shared<Grouping>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -717,7 +856,9 @@ struct UnaryOp : Expr {
         return sv == stringify() or expr->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<UnaryOp>(*this); }
+
+    Node variant() override { return this; }
 };
 
 struct BinOp : Expr {
@@ -738,7 +879,9 @@ struct BinOp : Expr {
         return sv == stringify() or lhs->involvesName(sv) or rhs->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return lhs->left(); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -759,10 +902,13 @@ struct PostOp : Expr {
         return sv == stringify() or expr->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return expr->left(); }
+
+    Node variant() override { return this; }
 };
 
 
+// circumfix operators
 struct CircumOp : Expr {
     std::string op1;
     std::string op2;
@@ -779,7 +925,9 @@ struct CircumOp : Expr {
         return sv == stringify() or expr->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<CircumOp>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -824,7 +972,13 @@ struct OpCall : Expr {
         );
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override {
+        if (not op_pos[0]) return exprs[0]->left();
+
+        return std::make_shared<OpCall>(*this); 
+    }
+
+    Node variant() override { return this; }
 };
 
 
@@ -875,12 +1029,14 @@ struct Call : Expr {
             );
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return func->left(); }
+
+    Node variant() override { return this; }
 };
 
 
 struct Closure : Expr {
-    std::vector<std::string> params;
+    std::vector<StringID> params;
     ExprPtr body;
     type::FuncType type;
 
@@ -890,50 +1046,27 @@ struct Closure : Expr {
     mutable Environment returned_env{};
     mutable Environment passed_env{};
 
+    // whether it's a member function or not
     mutable std::optional<Object> self{};
 
+    Closure(std::vector<StringID> ps, ExprPtr b, type::FuncType t) noexcept
+    : params{std::move(ps)}, body{std::move(b)}, type{std::move(t)} { }
+
     Closure(std::vector<std::string> ps, ExprPtr b, type::FuncType t)
-    : params{std::move(ps)}, body{std::move(b)}, type{std::move(t)} {
-        if(ps.size() != t.params.size()) util::error(); // should never happen anyway
+    :
+    // params{std::move(ps)},
+    body{std::move(b)}, type{std::move(t)} {
+        for (auto& s : ps)
+            params.emplace_back(std::move(s));
+
+
+        if(params.size() != type.params.size()) util::error(); // should never happen anyway
     }
 
-
-    // enum class OverrideMode {
-    //     NO_OVERRIDE,
-    //     OVERRIDE_EXISTING,
-    //     NORAML,
-    // };
-
-    // template <OverrideMode MODE = OverrideMode::NORAML>
-    void capture(const Environment& e) const { // const as in doesn't change params or body.
-        for (const auto& [key, value] : e) {
-            env[key] = value;
-
-            // if constexpr (MODE == OverrideMode::NORAML) {
-            //     env[key] = value;
-            // }
-            // else if constexpr (MODE == OverrideMode::NO_OVERRIDE) {
-            //     if (not env.contains(key)) env[key] = value;
-            // }
-            // else if constexpr (MODE == OverrideMode::OVERRIDE_EXISTING) {
-            //     if (env.contains(key)) env[key] = value;
-            // }
-        }
-    }
-
-    void returnCapture(const Environment& e) const {
-        for (const auto& [key, value] : e)
-            returned_env[key] = value;
-    }
-
-    void passedCapture(const Environment& e) const {
-        for (const auto& [key, value] : e)
-            passed_env[key] = value;
-    }
-
-    // void captureArgs(const Environment& e) const {
-    //     for (const auto& [key, value] : e) args_env.insert_or_assign(key, value); // is this better than `env[key] = value`?
-    // }
+    // const as in doesn't change params or body.
+    void       capture(const Environment& e) const { for (const auto& [key, value] : e)          env[key] = value; }
+    void returnCapture(const Environment& e) const { for (const auto& [key, value] : e) returned_env[key] = value; }
+    void passedCapture(const Environment& e) const { for (const auto& [key, value] : e)   passed_env[key] = value; }
 
     void captureThis(const Object& obj) const { self = obj; }
 
@@ -941,9 +1074,9 @@ struct Closure : Expr {
     std::string stringify(const size_t indent = 0) const override {
         std::string s = "(";
 
-        if (not params.empty()) s += params[0] + ": " + type.params[0]->text(indent);
+        if (not params.empty()) s += params[0].name + ": " + type.params[0]->text(indent);
         for(size_t i{1}; i < params.size(); ++i)
-            s += ", " + params[i] + ": " + type.params[i]->text();
+            s += ", " + params[i].name + ": " + type.params[i]->text();
 
         return s + "): " + type.ret->text() + " => " + body->stringify(indent);
     }
@@ -952,7 +1085,9 @@ struct Closure : Expr {
         return sv == stringify() or body->involvesName(sv);
     }
 
-    Node variant() const override { return this; }
+    ExprPtr left() const override { return std::make_shared<Closure>(*this); }
+
+    Node variant() override { return this; }
 };
 
 
@@ -981,8 +1116,9 @@ struct Block : Expr {
         );
     }
 
+    ExprPtr left() const override { return std::make_shared<Block>(*this); }
 
-    Node variant() const override { return this; }
+    Node variant() override { return this; }
 };
 
 // defintions of operators. Usage is BinOp or UnaryOp
@@ -1002,7 +1138,6 @@ struct Fix : Expr {
 
     Fix(std::string n, std::string up, std::string down, const int s, std::vector<ExprPtr> cs)
     : name{std::move(n)}, high{std::move(up)}, low{std::move(down)}, shift{s}, funcs{std::move(cs)} {}
-
 
 
     bool involvesName(const std::string_view sv) const override {
@@ -1039,11 +1174,12 @@ struct Prefix : Fix {
         return "prefix(" + token + shifts + ") " + name + " = " + funcs[0]->stringify(indent);
     }
 
+    ExprPtr left() const override { return std::make_shared<Prefix>(*this); }
 
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Prefix>(*this); }
     std::string OpName() const override { return name; }
     TokenKind type() const override { return TokenKind::PREFIX; }
-    Node variant() const override { return this; }
+    Node variant() override { return this; }
 };
 
 struct Infix : Fix {
@@ -1064,11 +1200,12 @@ struct Infix : Fix {
         return "infix(" + token + shifts + ") " + name + " = " + funcs[0]->stringify(indent);
     }
 
+    ExprPtr left() const override { return std::make_shared<Infix>(*this); }
 
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Infix>(*this); }
     std::string OpName() const override { return name; }
     TokenKind type() const override { return TokenKind::INFIX; }
-    Node variant() const override { return this; }
+    Node variant() override { return this; }
 };
 
 struct Suffix : Fix {
@@ -1089,11 +1226,12 @@ struct Suffix : Fix {
         return "suffix(" + token + shifts + ") " + name + " = " + funcs[0]->stringify(indent);
     }
 
+    ExprPtr left() const override { return std::make_shared<Suffix>(*this); }
 
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Suffix>(*this); }
     std::string OpName() const override { return name; }
     TokenKind type() const override { return TokenKind::SUFFIX; }
-    Node variant() const override { return this; }
+    Node variant() override { return this; }
 };
 
 struct Exfix : Fix {
@@ -1116,11 +1254,12 @@ struct Exfix : Fix {
         return "exfix(" + token + shifts + ") " + name + ':' + name2 + " = " + funcs[0]->stringify(indent);
     }
 
+    ExprPtr left() const override { return std::make_shared<Exfix>(*this); }
 
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Exfix>(*this); }
     std::string OpName() const override { return name + ':' + name2; }
     TokenKind type() const override { return TokenKind::EXFIX; }
-    Node variant() const override { return this; }
+    Node variant() override { return this; }
 };
 
 
@@ -1164,6 +1303,9 @@ struct Operator : Fix {
     }
 
 
+    ExprPtr left() const override { return std::make_shared<Operator>(*this); }
+
+
     std::string OpName() const override {
         std::string op_name;
         for (ssize_t i = -1; const auto& field : op_pos) {
@@ -1177,7 +1319,7 @@ struct Operator : Fix {
     }
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Operator>(*this); }
     TokenKind type() const override { return TokenKind::MIXFIX; }
-    Node variant() const override { return this; }
+    Node variant() override { return this; }
 };
 
 } // namespace expr

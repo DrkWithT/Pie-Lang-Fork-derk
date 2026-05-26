@@ -79,7 +79,7 @@ namespace type {
     bool ConceptType::typeCheck(interp::Visitor* visitor, const value::Value& v, const TypePtr& other) const {
         const auto& f = get<expr::Closure>(*func);
         // interp::Visitor::ScopeGuard sg{visitor, interp::Visitor::EnvTag::FUNC, f.args_env, f.env};
-        interp::Visitor::ScopeGuard sg{visitor, interp::Visitor::EnvTag::FUNC, f.env};
+        interp::Visitor::ScopeGuard sg{visitor, interp::Visitor::EnvTag::FUNC, f.envs.env};
 
 
         if (not f.type.params[0]->typeCheck(visitor, v, other)) return false;
@@ -203,7 +203,7 @@ namespace type {
         return false;
     }
 
-    bool UnionType::typeCheck(interp::Visitor* visitor, [[maybe_unused]] const value::Value& v, const TypePtr& other) const {
+    bool UnionType::typeCheck(interp::Visitor* visitor, const value::Value& v, const TypePtr& other) const {
         return std::ranges::any_of(types, [visitor, &v, &other](const auto& type) { return type->typeCheck(visitor, v, other); });
     }
 
@@ -307,6 +307,23 @@ namespace type {
     // * Map Type * //
     std::string MapType::text(const size_t indent) const {
         return '{' + key_type->text(indent + 4) + ": " + val_type->text(indent + 4) + '}';
+    }
+
+
+    bool MapType::typeCheck(interp::Visitor *v, const value::Value& value, const TypePtr& other) const {
+        if (not std::holds_alternative<value::MapValue>(value)) return false;
+
+        const auto& map = get<value::MapValue>(value);
+
+        for (const auto& [key, val] : map.items->map) {
+            if (
+                not key_type->typeCheck(v, key, v->typeOf(key)) or
+                not val_type->typeCheck(v, val, v->typeOf(val))
+            )
+            return false;
+        }
+
+        return true;
     }
 
     bool MapType::operator>(const Type& other) const {

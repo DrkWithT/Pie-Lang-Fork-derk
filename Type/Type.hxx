@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <string>
 #include <vector>
 #include <memory>
@@ -225,7 +226,7 @@ namespace type {
 
         std::string text(const size_t indent = 0) const override;
         bool involvesT(const Type& T) const override { return key_type->involvesT(T) or val_type->involvesT(T); }
-        bool typeCheck(interp::Visitor*, const value::Value&, const TypePtr& other) const override { return *this >= *other; }
+        bool typeCheck(interp::Visitor*, const value::Value&, const TypePtr&) const override; // return *this >= *other; 
 
         bool operator>(const Type& other) const override;
         bool operator>=(const Type& other) const override;
@@ -278,6 +279,15 @@ namespace type {
 
     inline TypePtr MapOf(TypePtr type1, TypePtr type2) {
         return std::make_shared<MapType>(std::move(type1), std::move(type2));
+    }
+
+    template <std::same_as<TypePtr>... Ts>
+    inline TypePtr UnionOf(Ts... types) {
+        return std::make_shared<UnionType>(std::vector<TypePtr>{std::move(types)...});
+    }
+
+    inline TypePtr UnionOf(std::vector<TypePtr> types) {
+        return std::make_shared<UnionType>(std::move(types));
     }
 
 

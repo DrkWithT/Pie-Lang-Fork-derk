@@ -203,14 +203,8 @@ namespace type {
 
         std::string text(const size_t = 0) const override;
         bool involvesT(const Type& T) const override { return type->involvesT(T); }
-        bool typeCheck(interp::Visitor*, const value::Value&, const TypePtr& other) const override {
-            // if (std::holds_alternative<value::ListValue>(v)) {
-            //     const auto& l = get<value::ListValue>(v);
-            //     if (l.elts->values.size() == 1 and )
-            // }
+        bool typeCheck(interp::Visitor*, const value::Value&, const TypePtr& other) const override; // return *this >= *other;
 
-            return *this >= *other;
-        }
 
         bool operator>(const Type& other) const override;
         bool operator>=(const Type& other) const override;

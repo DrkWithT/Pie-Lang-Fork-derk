@@ -290,6 +290,18 @@ namespace type {
     // * List Type * //
     std::string ListType::text(const size_t indent) const { return '{' + type->text(indent) + '}'; }
 
+
+    bool ListType::typeCheck(interp::Visitor *v, const value::Value& value, const TypePtr& other) const {
+        if (not std::holds_alternative<value::ListValue>(value)) return false;
+
+        const auto& map = get<value::ListValue>(value);
+
+        for (const auto& val : map.elts->values)
+            if (not type->typeCheck(v, val, v->typeOf(val))) return false;
+
+        return true;
+    }
+
     bool ListType::operator>(const Type& other) const {
         if (auto that = dynamic_cast<const ListType*>(&other)) return *type > *that->type;
 

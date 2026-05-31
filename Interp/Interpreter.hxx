@@ -47,25 +47,18 @@ struct NameSpace {
             type::TypePtr
         >
     > members;
+    Operators prefix_op_env;
+    Operators op_env;
 
     std::unordered_map<std::string, std::shared_ptr<NameSpace>> children;
+
 };
 
+
+
 class Visitor {
-public:
 
-    enum class EnvTag {
-        NONE,
-        FUNC,
-        SCOPE,
-    };
-
-private:
-
-    std::vector<std::pair<Environment, EnvTag>> env;
-    // Environment env;
-    std::vector<Operators> prefix_op_env;
-    std::vector<Operators> op_env;
+    std::vector<value::Env> env;
 
     // std::unordered_map<
     //     std::string,
@@ -101,7 +94,7 @@ public:
 
 
     Visitor(std::vector<size_t> indices) noexcept
-    : env(1), prefix_op_env(1), op_env(1), import_indices{std::move(indices)}
+    : env(1), import_indices{std::move(indices)}
     { }
 
     // void addOperators(Operators os) {
@@ -120,7 +113,7 @@ public:
 
     bool prefixOpsContain(const std::string& op) const {
         // no need to reverse in this case
-        for (const auto& ops : prefix_op_env) {
+        for (const auto& [_, ops, __, ___] : env) {
             if (ops.contains(op)) return true;
         }
 
@@ -131,7 +124,7 @@ public:
 
     bool opsContain(const std::string& op) const {
         // no need to reverse in this case
-        for (const auto& ops : op_env) {
+        for (const auto& [_, __, ops, ___] : env) {
             if (ops.contains(op)) return true;
         }
 
@@ -140,7 +133,7 @@ public:
 
 
     const std::shared_ptr<expr::Fix>& findPrefixOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
-        for (const auto& ops : std::views::reverse(prefix_op_env)) {
+        for (const auto& [_, ops, __, ___] : std::views::reverse(env)) {
             if (ops.contains(op)) return ops.at(op);
         }
 
@@ -150,7 +143,7 @@ public:
 
 
     const std::shared_ptr<expr::Fix>& findOp(const std::string& op, const std::source_location& loc = std::source_location::current()) const {
-        for (const auto& ops : std::views::reverse(op_env)) {
+        for (const auto& [_, __, ops, ___] : std::views::reverse(env)) {
             if (ops.contains(op)) return ops.at(op);
         }
 
@@ -212,7 +205,7 @@ public:
     }
 
     Value fetchRef(const expr::Name *n) {
-        for (const auto& [e, _] : std::views::reverse(env)) {
+        for (const auto& [e, _, __, ___] : std::views::reverse(env)) {
             if (e.contains(n->ID)) {
                 const auto& [named_ref, value_ptr, type_ptr] = e.at(n->ID);
                 const auto& [_, space] = named_ref;
@@ -754,7 +747,7 @@ public:
 
     Value refAssign(const expr::Assignment *ass, const expr::Name* name) {
 
-        for (const auto& [e, _] : std::views::reverse(env)) {
+        for (const auto& [e, _, __, ___] : std::views::reverse(env)) {
             if (e.contains(name->ID)) {
                 const auto& [named_ref, value_ptr, type_ptr] = e.at(name->ID);
                 const auto& [_, space] = named_ref;
@@ -1030,6 +1023,9 @@ public:
         if (not global_search_only) {
             for (const auto space : std::views::reverse(current_space)) {
                 if (const auto s = matchChain(names, space)) return s;
+
+                for (const auto& [_, ns] : space->children)
+                    if (const auto s = matchChain(names, ns.get())) return s;
             }
         }
 
@@ -1132,16 +1128,16 @@ public:
 
 
 
+        // for (auto& [id, val] : env.back().env) {
+            //     auto& [name, value, type] = val;
+            //     // I know this name is not a reference since each class member is responsible for its members
+            //     current_space.back()->members[id] = {{std::move(name)}, std::move(value), std::move(type)};
+            // }
+
         // then add the variables that resulted from that execution
-
-        for (auto& [id, val] : env.back().first) {
-            auto& [name, value, type] = val;
-
-            // members.push_back({expr::Name{name}, std::move(type), std::move(value)});
-            // I know this name is not a reference since each class member is responsible for its members
-            current_space.back()->members[id] = {{std::move(name)}, std::move(value), std::move(type)};
-            // members[id] = {{std::move(name).name}, std::move(type), std::move(value)};
-        }
+        current_space.back()->members = std::move(env).back().env;
+        current_space.back()->prefix_op_env = std::move(env).back().prefix_op_env;
+        current_space.back()->op_env = std::move(env).back().op_env;
 
 
         return value;
@@ -1167,33 +1163,141 @@ public:
     Value operator()(const expr::UseSpace *use) {
         if (const auto& var = getVar(use->ID); var) return var->first;
 
-        const auto space = findNS(use->spaces, use->global);
+        const auto ns = findNS(use->spaces, use->global);
 
         // lexical scoping must've taken care of that
         // if (not namespaces.contains(space)) util::error("space '" + space + "' not found!");
 
         Value v;
-        for (const auto& [ID, t_v] : space->members) {
+        for (const auto& [ID, t_v] : ns->members) {
             const auto& [name, value, type] = t_v;
 
             v = *value;
-            addVar(name.name, ID, value, type::builtins::Any(), space);
+            addVar(name.name, ID, value, type::builtins::Any(), ns);
         }
 
 
+        // this gotta change and be bundled with ENV instead of being its own thing
         if (current_space.empty()) {
-            for (const auto& [name, space] : space->children) {
+            for (const auto& [name, space] : ns->children) {
                 global_spaces[name] = space;
             }
         }
-        else for (const auto& [name, space] : space->children) {
+        else for (const auto& [name, space] : ns->children) {
             current_space.back()->children[name] = space;
+        }
+
+
+        // `use space ns::;` always wil pull ALL OPS
+        if (use->pull_ops) {
+            for (const auto& [name, prefix_op] : ns->prefix_op_env) {
+                env.back().prefix_op_env[name] = prefix_op;
+            }
+            for (const auto& [name, op] : ns->op_env) {
+                env.back().op_env[name] = op;
+            }
         }
 
 
 
         return v;
+    }
 
+
+    Value operator()(const expr::UseFix *use) {
+        const auto ns = findNS(use->spaces, use->global);
+
+        std::optional<value::Value> value;
+
+        switch (use->filter) {
+            case TokenKind::PREFIX:
+                for (const auto& [name, prefix_op] : ns->prefix_op_env)
+                    if (
+                        prefix_op->type() == TokenKind::PREFIX and
+                        (use->op_name.empty() or name == use->op_name)
+                    ) {
+                        env.back().prefix_op_env[name] = prefix_op;
+                        value = *dynamic_cast<expr::Closure*>(prefix_op->funcs[0].get());
+                    }
+                break;
+
+            case TokenKind::INFIX:
+                for (const auto& [name, op] : ns->op_env)
+                    if (
+                        op->type() == TokenKind::INFIX and
+                        (use->op_name.empty() or name == use->op_name)
+                    ) {
+                        env.back().op_env[name] = op;
+                        value = *dynamic_cast<expr::Closure*>(op->funcs[0].get());
+                    }
+                break;
+
+            case TokenKind::SUFFIX:
+                for (const auto& [name, op] : ns->op_env)
+                    if (
+                        op->type() == TokenKind::SUFFIX and
+                        (use->op_name.empty() or name == use->op_name)
+                    ) {
+                        env.back().op_env[name] = op;
+                        value = *dynamic_cast<expr::Closure*>(op->funcs[0].get());
+                    }
+                break;
+
+            case TokenKind::EXFIX:
+                for (const auto& [name, prefix_op] : ns->prefix_op_env)
+                    if (
+                        prefix_op->type() == TokenKind::EXFIX and
+                        (use->op_name.empty() or name == use->op_name)
+                    ) {
+                        env.back().prefix_op_env[name] = prefix_op;
+                        value = *dynamic_cast<expr::Closure*>(prefix_op->funcs[0].get());
+                    }
+                break;
+
+            case TokenKind::MIXFIX:
+                for (const auto& [name, prefix_op] : ns->prefix_op_env)
+                    if (
+                        prefix_op->type() == TokenKind::MIXFIX and
+                        (use->op_name.empty() or name == use->op_name)
+                    ) {
+                        env.back().prefix_op_env[name] = prefix_op;
+                        value = *dynamic_cast<expr::Closure*>(prefix_op->funcs[0].get());
+                    }
+
+                for (const auto& [name, op] : ns->op_env)
+                    if (
+                        op->type() == TokenKind::MIXFIX and
+                        (use->op_name.empty() or name == use->op_name)
+                    ) {
+                        env.back().op_env[name] = op;
+                        value = *dynamic_cast<expr::Closure*>(op->funcs[0].get());
+                    }
+                break;
+
+            case TokenKind::NONE:
+                for (const auto& [name, prefix_op] : ns->prefix_op_env) {
+                    if (use->op_name.empty() or name == use->op_name) {
+                        env.back().prefix_op_env[name] = prefix_op;
+                        value = *dynamic_cast<expr::Closure*>(prefix_op->funcs[0].get());
+                    }
+                }
+
+                for (const auto& [name, op] : ns->op_env) {
+                    if (use->op_name.empty() or name == use->op_name) {
+                        env.back().op_env[name] = op;
+                        value = *dynamic_cast<expr::Closure*>(op->funcs[0].get());
+                    }
+                }
+                break;
+
+
+            default: util::error();
+        }
+
+
+        if (not value) util::error("Fix operator `use` directive didn't pull any operators into scope: " + use->stringify());
+
+        return *value;
     }
 
 
@@ -1221,6 +1325,7 @@ public:
 
 
     Value operator()(const expr::Import *import) {
+
         const auto src = util::readFile(auto{import->path}.replace_extension(".pie").string());
         const Tokens tokens = lex::lex(src);
         if (tokens.empty()) util::error("Can't import an empty file!");
@@ -1819,8 +1924,6 @@ public:
             );
 
             args_env[func->params[1].ID] = {{func->params[1].name}, std::make_shared<Value>(arg2), func->type.params[1]};
-
-
         }
         else {
             // checkNoSyntaxType(op->funcs);
@@ -2092,6 +2195,10 @@ public:
         // the problem will be solved, and we'll even be able to allow
         // packs of syntax type: ...Syntax
         // for now, this is a hard problem for me
+        // ===== ^^^ old ==== vvv new
+        // so now that I added `Syntax` literals..
+        // this problem is mostly solved?
+        // but I still don't know if I wanna add implicit syntax or not
         std::vector<std::pair<size_t, std::vector<Value>>> expand_at;
         for (size_t i{}; i < args.size(); ++i) {
             if (const auto expand = dynamic_cast<const expr::Expansion*>(args[i].get())) {
@@ -2107,7 +2214,7 @@ public:
 
         auto var = std::visit(*this, call->func->variant());
         if (std::holds_alternative<std::string>(var)) { // that dumb lol. but now it works
-            const auto& name = std::get<std::string>(var);                                  // vvv not sure if this is moveable
+            const auto& name = std::get<std::string>(var);
             if (isBuiltin(name)) return evaluateBuiltin(std::move(args), std::move(expand_at), call->named_args, name);
         }
 
@@ -2180,7 +2287,7 @@ public:
 
             // // look in the arguments env (from a partially evaluated function that yielded this function)
             // for (const auto& [key, _] : func.args_env)
-            for (const auto& [_, obj] : func.env) {
+            for (const auto& [_, obj] : func.envs.env.env) {
                 const auto& [name, __, ___] = obj;
                 if (type->involvesT(type::ExprType{std::make_shared<expr::Name>(name.name)})) {
                     return true;
@@ -2205,7 +2312,7 @@ public:
             if (param_index == variadic_index){
                 if (findType(param_index, type)) {
                     // ScopeGuard sg{this, func.args_env, args_env};
-                    ScopeGuard sg{this, func.env, args_env};
+                    ScopeGuard sg{this, func.envs.env.env, args_env};
                     type = validateType(std::move(type));
                 }
 
@@ -2256,7 +2363,7 @@ public:
             else {
                 if (findType(param_index, type)) {
                     // ScopeGuard sg{this, func.args_env, args_env};
-                    ScopeGuard sg{this, func.env, args_env};
+                    ScopeGuard sg{this, func.envs.env.env, args_env};
                     type = validateType(std::move(type));
                 }
 
@@ -2340,7 +2447,7 @@ public:
 
             // // look in the arguments env (from a partially evaluated function that yielded this function)
             // for (const auto& [key, _] : func.args_env)
-            for (const auto& [_, obj] : func.env) {
+            for (const auto& [_, obj] : func.envs.env.env) {
                 const auto& [name, __, ___] = obj;
                 if (type->involvesT(type::ExprType{std::make_shared<expr::Name>(name.name)})) {
                     return true;
@@ -2358,7 +2465,7 @@ public:
                     const auto& [name, id] = sid;
                     if (findType(p, type)) {
                         // ScopeGuard sg{this, func.args_env, args_env};
-                        ScopeGuard sg{this, func.env, args_env};
+                        ScopeGuard sg{this, func.envs.env.env, args_env};
                         type = validateType(std::move(type));
                     }
 
@@ -2382,7 +2489,7 @@ public:
                 const auto& [name, id] = sid;
                 if (findType(p, type)) {
                     // ScopeGuard sg{this, func.args_env, args_env};
-                    ScopeGuard sg{this, func.env, args_env};
+                    ScopeGuard sg{this, func.envs.env.env, args_env};
                     type = validateType(std::move(type));
                 }
 
@@ -2445,7 +2552,7 @@ public:
 
         //* full call. Don't curry!
         // ScopeGuard sg{this, EnvTag::FUNC, func.args_env, func.env};
-        ScopeGuard sg{this, EnvTag::FUNC, func.env};
+        ScopeGuard sg{this, EnvTag::FUNC, func.envs.env.env};
         Environment args_env; // in case the lambda needs to capture 
 
 
@@ -2514,7 +2621,7 @@ public:
             ) != func.params.cend()
         ) {
             // ScopeGuard sg{this, func.args_env, args_env};
-            ScopeGuard sg{this, func.env, args_env};
+            ScopeGuard sg{this, func.envs.env.env, args_env};
             func.type.ret = validateType(std::move(func.type.ret));
         }
 
@@ -2524,10 +2631,12 @@ public:
 
 
         // sg.addEnv(func.args_env);
-        sg.addEnv(func.returned_env);
+        sg.addEnv(func.envs.returned_env.env);
         sg.addEnv(args_env);
-        sg.addEnv(func.env);
-        sg.addEnv(func.passed_env);
+        sg.addEnv(func.envs.env.env);
+        sg.addEnv(func.envs.passed_env.env);
+        sg.addOps(func.envs.env.op_env);
+        sg.addPrefixOps(func.envs.env.prefix_op_env);
 
         Value ret;
         if (not dynamic_cast<const expr::Block*>(func.body.get())) {
@@ -2556,9 +2665,11 @@ public:
         size_t found{};
 
         for (size_t i{}; i < env.size(); ++i)
-            if (env[i].second == EnvTag::FUNC) found = i;
+            if (env[i].tag == EnvTag::FUNC) found = i;
 
-        for (; found < env.size(); ++found) c.returnCapture(env[found].first);
+        for (; found < env.size(); ++found) {
+            c.returnCapture(env[found].env);
+        }
     }
 
 
@@ -2570,14 +2681,15 @@ public:
         size_t found2 = 1;
 
         for (size_t i = 1; i < env.size(); ++i)
-            if (env[i].second == EnvTag::FUNC) {
+            if (env[i].tag == EnvTag::FUNC) {
                 found1 = found2;
                 found2 = i;
             }
 
 
-        for (; found1 < found2; ++found1)
-            c.passedCapture(env[found1].first);
+        for (; found1 < found2; ++found1) {
+            c.passedCapture(env[found1].env);
+        }
     }
 
 
@@ -2590,8 +2702,8 @@ public:
         const bool is_variadic
     ) {
         // ScopeGuard sg{this, EnvTag::FUNC, func.args_env, func.env};
-        ScopeGuard sg{this, EnvTag::FUNC, func.env};
-        Environment args_env = func.env;
+        ScopeGuard sg{this, EnvTag::FUNC, func.envs.env.env};
+        Environment args_env = func.envs.env.env;
 
         for (const auto& [name, expr] : call->named_args) {
             type::TypePtr type;
@@ -2737,8 +2849,7 @@ public:
                         return true;
 
                 // // look in the arguments env (from a partially evaluated function that yielded this function)
-                // for (const auto& [key, _] : func.args_env)
-                for (const auto& [_, obj] : func.env) {
+                for (const auto& [_, obj] : func.envs.env.env) {
                     const auto& [name, __, ___] = obj;
                     if (type->involvesT(type::ExprType{std::make_shared<expr::Name>(name.name)}))
                         return true;
@@ -2757,7 +2868,7 @@ public:
 
                         if (findType(p, type)) {
                             // ScopeGuard sg{this, func.args_env, args_env};
-                            ScopeGuard sg{this, func.env, args_env};
+                            ScopeGuard sg{this, func.envs.env.env, args_env};
                             type = validateType(std::move(type));
                         }
                         ++p;
@@ -2779,7 +2890,7 @@ public:
                     const auto& [name, id] = sid;
                     if (findType(p, type)) {
                         // ScopeGuard sg{this, func.args_env, args_env};
-                        ScopeGuard sg{this, func.env, args_env};
+                        ScopeGuard sg{this, func.envs.env.env, args_env};
                         type = validateType(std::move(type));
                     }
 
@@ -2956,6 +3067,13 @@ public:
         // for (auto& type : closure.type.params) { type = validateType(std::move(type)); }
         // closure.type.ret = validateType(std::move(closure.type.ret));
 
+        // capture all the operators now:
+        for (const auto& [_, __, ops, ___] : env)
+            closure.captureOps(ops);
+
+        for (const auto& [_, ops, __, ___] : env)
+            closure.capturePrefixOps(ops);
+
         return closure;
     }
 
@@ -3006,7 +3124,7 @@ public:
             case EXFIX :
                 if (prefixOpsContain(fix->name))
                     findPrefixOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
-                else prefix_op_env.back()[fix->name] = fix->clone();
+                else env.back().prefix_op_env[fix->name] = fix->clone();
 
                 break;
 
@@ -3014,7 +3132,7 @@ public:
             case SUFFIX:
                 if (opsContain(fix->name))
                     findOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
-                else op_env.back()[fix->name] = fix->clone();
+                else env.back().op_env[fix->name] = fix->clone();
                 break;
 
             case MIXFIX: {
@@ -3022,12 +3140,12 @@ public:
                 if (mixfix->op_pos.front()) {
                     if (prefixOpsContain(fix->name))
                         findPrefixOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
-                    else prefix_op_env.back()[fix->name] = fix->clone();
+                    else env.back().prefix_op_env[fix->name] = fix->clone();
                 }
                 else {
                     if (opsContain(fix->name))
                         findOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
-                    else op_env.back()[fix->name] = fix->clone();
+                    else env.back().op_env[fix->name] = fix->clone();
                 }
             }
 
@@ -3452,7 +3570,8 @@ public:
         }
 
         if (name == "print_env") {
-            printEnv(env);
+            // printEnv(env);
+            util::error();
             return 0;
         }
 
@@ -3881,40 +4000,61 @@ public:
             // if (same) return std::make_shared<type::ListType>(std::move(values)[0]);
             if (same) return type::ListOf(std::move(values)[0]);
 
-            return type::ListOf(type::builtins::Any());
+
+            return type::UnionOf(std::move(values));
         }
 
         if (std::holds_alternative<MapValue>(value)) {
+            // auto values = std::ranges::fold_left(
+            //     get<MapValue>(value).items->map,
+            //     std::vector<std::pair<type::TypePtr, type::TypePtr>>{},
+            //     [this] (auto acc, const auto& elt) {
+            //         acc.push_back({typeOf(elt.first), typeOf(elt.second), });
+
+            //         return acc;
+            //     }
+            // );
+            auto keys = std::ranges::fold_left(
+                get<MapValue>(value).items->map,
+                std::vector<type::TypePtr>{},
+                [this] (auto acc, const auto& elt) {
+                    acc.push_back({typeOf(elt.first)});
+                    return acc;
+                }
+            );
+            // checking this here instead of wasting time checking the values too
+            if (keys.empty()) return std::make_shared<type::MapType>(type::builtins::_(), type::builtins::_());
+
             auto values = std::ranges::fold_left(
                 get<MapValue>(value).items->map,
-                std::vector<std::pair<type::TypePtr, type::TypePtr>>{},
+                std::vector<type::TypePtr>{},
                 [this] (auto acc, const auto& elt) {
-                    acc.push_back({typeOf(elt.first), typeOf(elt.second), });
-
+                    acc.push_back({typeOf(elt.second)});
                     return acc;
                 }
             );
 
+            // we know it ain't empty since we already check it up there
 
-            if (values.empty()) return std::make_shared<type::MapType>(type::builtins::_(), type::builtins::_());
 
-            const bool same_key = std::ranges::all_of(values, [tp = values[0].first ] (const auto& t) { return *t.first  == *tp; });
-            const bool same_val = std::ranges::all_of(values, [tp = values[0].second] (const auto& t) { return *t.second == *tp; });
+            const bool same_key = std::ranges::all_of(keys  , [tp = keys[0]  ] (const auto& t) { return *t== *tp; });
+            const bool same_val = std::ranges::all_of(values, [tp = values[0]] (const auto& t) { return *t== *tp; });
 
             if (same_key and same_val)
-                // return std::make_shared<type::MapType>(std::move(values)[0].first, std::move(values)[0].second);
-                return type::MapOf(std::move(values)[0].first, std::move(values)[0].second);
+                return std::make_shared<type::MapType>(std::move(keys)[0], std::move(values)[0]);
+                // return type::MapOf(std::move(keys)[0], std::move(values)[0]);
 
             if (same_key)
-                // return std::make_shared<type::MapType>(std::move(values)[0].first, type::builtins::Any()       );
-                return type::MapOf(std::move(values)[0].first, type::builtins::Any()       );
+                return type::MapOf(std::move(keys)[0], type::builtins::Any());
+                // return type::MapOf(std::move(keys)[0], type::UnionOf(std::move(values)));
 
             if (same_val)
-                // return std::make_shared<type::MapType>(type::builtins::Any()     , std::move(values)[0].second);
-                return type::MapOf(type::builtins::Any()     , std::move(values)[0].second);
+                return type::MapOf(type::builtins::Any(), std::move(values)[0]);
+                // return type::MapOf(type::UnionOf(std::move(keys)), std::move(values)[0]);
 
-                // return std::make_shared<type::MapType>(type::builtins::Any()     , type::builtins::Any()      );
-            return type::MapOf(type::builtins::Any()     , type::builtins::Any()      );
+
+            return type::MapOf(type::builtins::Any(), type::builtins::Any());
+            // return type::MapOf(type::UnionOf(std::move(keys)), type::UnionOf(std::move(values)));
         }
 
         // if (std::holds_alternative<NameSpace>(value)) return std::make_shared<type::SpaceType>();
@@ -3939,7 +4079,7 @@ public:
         }
 
         template <std::same_as<Environment>... E>
-        ScopeGuard(Visitor* t, Visitor::EnvTag tag, const E&... es) noexcept : v{t} {
+        ScopeGuard(Visitor* t, value::EnvTag tag, const E&... es) noexcept : v{t} {
             v->scope(tag);
 
             (addEnv(es), ...);
@@ -3950,6 +4090,16 @@ public:
                 const auto& [name, value, type] = var;
                 v->addVar(name.name, ID, value, type);
             }
+        }
+
+        void addOps(const Operators& ops) {
+            for (const auto& [name, op] : ops)
+                v->env.back().op_env[name] = op->clone();
+        }
+
+        void addPrefixOps(const Operators& ops) {
+            for (const auto& [name, op] : ops)
+                v->env.back().prefix_op_env[name] = op->clone();
         }
 
 
@@ -3971,15 +4121,12 @@ public:
     };
 
 
-    void scope(Visitor::EnvTag tag = Visitor::EnvTag::NONE) {
-        op_env.push_back({});
-        env.push_back({{}, tag});
+    void scope(const value::EnvTag tag = value::EnvTag::NONE) {
+        env.push_back({.tag = tag});
     }
 
-    void unscope() {
-        op_env.pop_back();
-        env.pop_back();
-    }
+    void unscope() { env.pop_back(); }
+
 
     Value addVar(
         const std::string& name,
@@ -4010,7 +4157,7 @@ public:
         // }
         // env.back().first[name] = {std::make_shared<Value>(v), t};
 
-        env.back().first[ID] = {{name, space}, v, t};
+        env.back().env[ID] = {{name, space}, v, t};
         // env[ID] = {name, std::make_shared<Value>(v), t};
 
         return *v;
@@ -4026,7 +4173,7 @@ public:
 
 
     bool isRef(const size_t ID) const {
-        for (const auto& [e, _] : std::views::reverse(env)) {
+        for (const auto& [e, _, __, ___] : std::views::reverse(env)) {
             if (e.contains(ID)) {
                 const auto& [named_ref, _, __] = e.at(ID);
                 return named_ref.isRef();
@@ -4038,7 +4185,7 @@ public:
     }
 
     std::optional<std::pair<Value, type::TypePtr>> getVar(const size_t ID) const {
-        for (const auto& [e, _] : std::views::reverse(env)) {
+        for (const auto& [e, _, __, ___] : std::views::reverse(env)) {
             if (e.contains(ID)) {
                 const auto& [named_ref, value_ptr, type_ptr] = e.at(ID);
                 return {{*value_ptr, type_ptr}};
@@ -4055,11 +4202,11 @@ public:
 
     bool changeVar(const size_t ID, const value::Value& v) {
         for (auto rev_it = env.rbegin(); rev_it != env.rend(); ++rev_it)
-            if (rev_it->first.contains(ID)) {
+            if (rev_it->env.contains(ID)) {
                 // const auto& t = rev_it->first.at(ID);
                 // (*rev_it).first[name] = {std::make_shared<value::Value>(v), t};
                 // get<1>(rev_it->first.at(ID)) = std::make_shared<value::Value>(v);
-                *get<1>(rev_it->first.at(ID)) = v;
+                *get<1>(rev_it->env.at(ID)) = v;
 
                 return true;
             }
@@ -4084,9 +4231,9 @@ public:
 
 
     void removeVar(const size_t ID) {
-        for(auto& curr_env : std::views::reverse(env)) {
-            if (curr_env.first.contains(ID)) {
-                curr_env.first.erase(ID);
+        for(auto& [curr_env, _, __, ___] : std::views::reverse(env)) {
+            if (curr_env.contains(ID)) {
+                curr_env.erase(ID);
                 return;
             }
         }
@@ -4104,26 +4251,26 @@ public:
     }
 
 
-    static void printEnv(const Environment& e) noexcept {
-        // const auto& e = envStackToEnvMap();
+    // static void printEnv(const Environment& e) noexcept {
+    //     // const auto& e = envStackToEnvMap();
 
-        for (const auto& [ID, v] : e) {
-            const auto& [name, value, type] = v;
+    //     for (const auto& [ID, v] : e) {
+    //         const auto& [name, value, type] = v;
 
-            std::println("[{}] {}::{}: {} = {}", ID, name.space->name, name.name, type->text(), stringify(*value));
-        }
-    }
+    //         std::println("[{}] {}::{}: {} = {}", ID, name.space->name, name.name, type->text(), stringify(*value));
+    //     }
+    // }
 
 
-    static void printEnv(const std::vector<std::pair<Environment, EnvTag>>& env) noexcept {
-        const auto& e = envStackToEnvMap(env);
+    // static void printEnv(const std::vector<std::pair<Environment, EnvTag>>& env) noexcept {
+    //     const auto& e = envStackToEnvMap(env);
 
-        for (const auto& [ID, v] : e) {
-            const auto& [name, value, type] = v;
+    //     for (const auto& [ID, v] : e) {
+    //         const auto& [name, value, type] = v;
 
-            std::println("[{}] {}: {} = {}", ID, name.space->name, name.name, type->text(), stringify(*value));
-        }
-    }
+    //         std::println("[{}] {}: {} = {}", ID, name.space->name, name.name, type->text(), stringify(*value));
+    //     }
+    // }
 };
 
 

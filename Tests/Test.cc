@@ -19,6 +19,122 @@
 
 
 
+TEST_CASE("Unions in Collection Types", "[Type][List][Map]") {
+    const auto src1 = R"(
+Number = union { Int; Double; };
+
+m: {Number: Bool} = {1: true, 1.2: false};
+l: {Number} = {1, 2.3, 4, 5.6};
+)";
+
+    REQUIRE_NOTHROW(pie::test::run(src1));
+}
+
+
+
+TEST_CASE("Use Directives for Names Introduced in Use Declarations", "[Space][Use][Var]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+space x {
+    space detail {
+        x = 1;
+    };
+
+    use detail::x;
+};
+
+
+use space x;
+
+print(x);
+
+)";
+
+    REQUIRE(pie::test::run(src1) == "1");
+}
+
+
+
+TEST_CASE("Dynamic...Operators", "[Operator][Overload]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+
+infix + = (a, b) => print("Any + Any");
+
+func = () => "" + "";
+func();
+
+infix + = (a: String, b: String) => print("String + String");
+
+func();
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(Any + Any
+String + String)");
+}
+
+
+
+TEST_CASE("Presistent Operators in Returned/Pulled Closures", "[Operator][Scope]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+
+space lib {
+    __C = class { };
+    infix + = (a: __C, b: __C) => print("added __C");
+
+    space provide {
+        C = __C;
+        doWork = (c1: C, c2: C) => c1 + c2;
+    };
+};
+
+
+use space lib::provide;
+
+a = C();
+b = C();
+
+doWork(a, b);
+)";
+
+    REQUIRE(pie::test::run(src1) == "added __C");
+}
+
+
+
+
+TEST_CASE("Lexical Scoping", "[Scope]") {
+    const auto src1 = R"(
+print = __builtin_print;
+
+var = 1;
+
+func = () => {
+    inner = () => print(var);
+    inner();
+
+    var: Int = 2;
+
+    inner();
+    inner;
+};
+
+
+inner = func();
+inner();
+
+)";
+
+    REQUIRE(pie::test::run(src1) == "1\n1\n1");
+}
+
+
+
+
 TEST_CASE("Namespaces and Imports", "[Space][Import]") {
     const auto src1 = R"(
 print = __builtin_print;
@@ -1130,7 +1246,7 @@ TEST_CASE("Previous Member in Other Member Init", "[Class]") {
 }
 
 
-TEST_CASE("Match Invalid Name Case Scope", "[Match][Type][Lex]") {
+TEST_CASE("Match Invalid Name Case Scope", "[Match][Type][Scope]") {
     const auto src = R"(
 print = __builtin_print;
 
@@ -1153,7 +1269,7 @@ match c {
 }
 
 
-TEST_CASE("Match Invalid Structure Type Name", "[Match][Type][Lex]") {
+TEST_CASE("Match Invalid Structure Type Name", "[Match][Type][Scope]") {
     const auto src = R"(
 print = __builtin_print;
 

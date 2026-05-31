@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cctype>
 #include <string>
+#include <string_view>
 #include <filesystem>
 #include <vector>
 #include <unordered_map>
@@ -12,6 +14,8 @@
 #include <optional>
 #include <memory>
 
+#include <cctype>
+
 #include "../Utils/utils.hxx"
 #include "../Lex/Token.hxx"
 #include "../Declarations.hxx"
@@ -20,36 +24,6 @@
 
 
 inline namespace pie {
-
-namespace interp { struct NameSpace; }
-
-inline namespace value {
-    struct Value;
-    using ValuePtr = std::shared_ptr<Value>;
-
-    struct Members;
-    using Object      = std::pair<type::TypePtr, std::shared_ptr<Members>>;
-
-    struct SpaceRef {
-        std::string name;
-        interp::NameSpace* space = nullptr;
-
-        bool isRef() const { return space != nullptr; }
-    };
-
-    using Environment = std::unordered_map<
-        size_t,
-        std::tuple<
-            SpaceRef,
-            value::ValuePtr,
-            type::TypePtr
-        >
-    >;
-}
-
-namespace expr { struct Fix; }
-using Operators  = std::unordered_map<std::string, std::shared_ptr<expr::Fix>>;
-
 
 
 namespace expr {
@@ -658,7 +632,8 @@ struct Namespace : Expr {
 
 
     explicit Namespace(std::string n, std::vector<ExprPtr> exprs) noexcept
-    : name{std::move(n)}, space{std::move(exprs)} {}
+    : name{std::move(n)}, space{std::move(exprs)}
+    {}
 
     std::string stringify(const size_t indent = 0) const override {
         std::string s = "space " + name + " {\n";
@@ -686,8 +661,9 @@ struct Use : Expr {
     std::vector<std::string> spaces;
     StringID name;
 
-    explicit Use(bool g, std::vector<std::string> ns, std::string n) noexcept
-    : global{g}, spaces{std::move(ns)}, name{std::move(n)} {}
+    Use(bool g, std::vector<std::string> ns, std::string n) noexcept
+    : global{g}, spaces{std::move(ns)}, name{std::move(n)}
+    {}
 
 
     std::string stringify(const size_t = 0) const override {
@@ -696,7 +672,7 @@ struct Use : Expr {
         for (const auto& space : spaces)
             s += space + "::";
 
-        return (global ? "use ::" : "use" ) + s + "::" + name.name;
+        return (global ? "use ::" : "use " ) + s + name.name;
     }
 
     bool involvesName(const std::string_view sv) const override {
@@ -713,16 +689,16 @@ struct UseSpace : Expr {
     bool global;
     std::vector<std::string> spaces;
     ssize_t last_item_id;
+    bool pull_ops;
 
-    std::vector<std::pair<std::string, std::string>> children; // children full name against short name
 
-
-    explicit UseSpace(bool g, std::vector<std::string> ns) noexcept
-    : global{g}, spaces{std::move(ns)} {}
+    UseSpace(bool g, std::vector<std::string> ns, bool ops) noexcept
+    : global{g}, spaces{std::move(ns)}, pull_ops{ops}
+    {}
 
 
     std::string stringify(const size_t = 0) const override {
-        std::string s = "use space";
+        std::string s = "use space ";
 
         if (global) {
             for (const auto& space : spaces)
@@ -734,7 +710,7 @@ struct UseSpace : Expr {
                 s += "::" + space;
         }
 
-        return s;
+        return s + (pull_ops ? "::" : "");
     }
 
     bool involvesName(const std::string_view sv) const override {
@@ -745,6 +721,53 @@ struct UseSpace : Expr {
 
     Node variant() override { return this; }
 };
+
+
+struct UseFix : Expr {
+    bool global;
+    std::vector<std::string> spaces;
+    TokenKind filter;
+    std::string op_name;
+
+
+    UseFix(bool g, std::vector<std::string> ns, const TokenKind f = TokenKind::NONE, std::string op = "") noexcept
+    : global{g}, spaces{std::move(ns)}, filter{f}, op_name{std::move(op)}
+    {}
+
+
+    std::string stringify(const size_t = 0) const override {
+        std::string s = "use ";
+        if (filter != TokenKind::NONE) {
+            for (const char c : std::string_view{token::stringify(filter)})
+                s += tolower(c);
+
+            s += ' ';
+        }
+
+
+
+        if (global) {
+            for (const auto& space : spaces)
+                s += "::" + space;
+        }
+        else {
+            s += spaces[0];
+            for (const auto& space : spaces | std::views::drop(1))
+                s += "::" + space;
+        }
+
+        return s + "::" + op_name;
+    }
+
+    bool involvesName(const std::string_view sv) const override {
+        return sv == stringify();
+    }
+
+    ExprPtr left() const override { return std::make_shared<UseFix>(*this); }
+
+    Node variant() override { return this; }
+};
+
 
 struct Import : Expr {
     std::filesystem::path path;
@@ -1038,11 +1061,13 @@ struct Closure : Expr {
     ExprPtr body;
     type::FuncType type;
 
-    // I need to un-mutable those vars
-    // mutable Environment args_env{};
-    mutable Environment env{};
-    mutable Environment returned_env{};
-    mutable Environment passed_env{};
+
+    // I need to un-mutable this thing
+    mutable struct CapturedEnvs {
+        value::Env env{};
+        value::Env returned_env{};
+        value::Env passed_env{};
+    } envs;
 
     // whether it's a member function or not
     mutable std::optional<Object> self{};
@@ -1062,9 +1087,33 @@ struct Closure : Expr {
     }
 
     // const as in doesn't change params or body.
-    void       capture(const Environment& e) const { for (const auto& [key, value] : e)          env[key] = value; }
-    void returnCapture(const Environment& e) const { for (const auto& [key, value] : e) returned_env[key] = value; }
-    void passedCapture(const Environment& e) const { for (const auto& [key, value] : e)   passed_env[key] = value; }
+    void capture(const Environment& e) const {
+        for (const auto& [key, value] : e) {
+            envs.env.env[key] = value;
+        }
+    }
+    void returnCapture(const Environment& e) const {
+        for (const auto& [key, value] : e) {
+            envs.returned_env.env[key] = value;
+        }
+    }
+    void passedCapture(const Environment& e) const {
+        for (const auto& [key, value] : e) {
+            envs.passed_env.env[key] = value;
+        }
+    }
+
+    void captureOps(const Operators& ops) const {
+        for (const auto& [key, value] : ops) {
+            envs.env.op_env[key] = value;
+        }
+    }
+
+    void capturePrefixOps(const Operators& ops) const {
+        for (const auto& [key, value] : ops) {
+            envs.env.prefix_op_env[key] = value;
+        }
+    }
 
     void captureThis(const Object& obj) const { self = obj; }
 

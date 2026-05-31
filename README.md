@@ -683,7 +683,7 @@ MoreThan10 = (x: Int): Bool => x > 10;
 a: MoreThan10 = 15; .: type checks!
 a = 5; .: Error!
 ```
-Concepts also allow for what's know as "Design by Contract" where pre-conditions are the types of the arguments, and the post-condition is the return type.
+Concepts also allow for what's known as "Design by Contract" where pre-conditions are the types of the arguments, and the post-condition is the return type.
 
 #### Syntax Type
 

@@ -1,7 +1,6 @@
 #pragma once
 
 
-#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,7 +21,7 @@
 inline namespace pie {
 namespace analysis {
 
-inline std::string stringify(const std::vector<std::string>& spaces) {
+static std::string stringify(const std::vector<std::string>& spaces) {
     if (spaces.size() == 1) return spaces[0];
 
     std::string s = spaces[0];
@@ -41,30 +40,25 @@ struct NameSpace {
 };
 
 
+struct Env {
+    std::unordered_map<std::string, size_t> vars;
+    std::unordered_map<std::string, std::shared_ptr<NameSpace>> spaces;
+};
+
+
 class LexicalScoping {
-
-    size_t variable_index;
-
-
-    struct Env {
-        std::unordered_map<std::string, size_t> vars;
-        std::unordered_map<std::string, std::shared_ptr<NameSpace>> spaces;
-    };
-
     enum class EnvTag {
         SCOPE,
         SPACE,
     };
 
+    size_t variable_index;
+
 
     // scopes
     std::vector<std::pair<Env, EnvTag>> env;
-
-    // std::unordered_map<std::string, std::unordered_map<std::string, size_t>> namespaces;
-
-    // std::string space_dir;
     std::vector<NameSpace*> current_space;
-    // std::unordered_map<std::string, std::shared_ptr<NameSpace>> global_spaces;
+
 
 
     bool in_loop = false;
@@ -601,6 +595,16 @@ public:
     }
 
 
+    void operator()(expr::UseFix *use) {
+        if (auto id = findVar(use->stringify())) {
+            use->ID = *id;
+            return;
+        }
+
+        // util::error();
+    }
+
+
     void operator()(expr::UseSpace *use) {
         if (auto id = findVar(use->stringify())) {
             use->ID = *id;
@@ -639,29 +643,9 @@ public:
                     current_space.back()->children[name]->members[member_name] = member_id;
                 }
             }
-
         }
-
-
-        // if (current_space.empty()) {
-        //     for (const auto& [name, id] : space->members) {
-        //         env.back().first[name] = id;
-        //     }
-
-        //     for (const auto& [name, space] : space->children){
-        //         global_spaces[name] = space;
-        //     }
-        // }
-        // else {
-        //     for (const auto& [name, id] : space->members) {
-        //         current_space.back()->members[name] = id;
-        //     }
-
-        //     for (const auto& [name, space] : space->children) {
-        //         current_space.back()->children[name] = space;
-        //     }
-        // }
     }
+
 
     void operator()(expr::Use *use) {
         if (auto id = findVar(use->stringify())) {
@@ -788,6 +772,14 @@ public:
         }
         else if (const auto func = type::isFunction(type)) {
 
+        }
+
+        else if(const auto var = type::isList(type)) {
+            visitType(var->type);
+        }
+        else if(const auto var = type::isMap(type)) {
+            visitType(var->key_type);
+            visitType(var->val_type);
         }
         else if(const auto var = type::isVariadic(type)) {
             visitType(var->type);
@@ -940,6 +932,9 @@ public:
         if (not global_search_only) {
             for (const auto space : std::views::reverse(current_space)) {
                 if (const auto s = matchChain(names, space)) return s;
+
+                for (const auto& [_, child] : space->children)
+                    if (const auto s = matchChain(names, child.get())) return s;
             }
         }
 

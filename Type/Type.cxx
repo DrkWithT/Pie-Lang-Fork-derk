@@ -79,7 +79,7 @@ namespace type {
     bool ConceptType::typeCheck(interp::Visitor* visitor, const value::Value& v, const TypePtr& other) const {
         const auto& f = get<expr::Closure>(*func);
         // interp::Visitor::ScopeGuard sg{visitor, interp::Visitor::EnvTag::FUNC, f.args_env, f.env};
-        interp::Visitor::ScopeGuard sg{visitor, interp::Visitor::EnvTag::FUNC, f.envs.env};
+        interp::Visitor::ScopeGuard sg{visitor, value::EnvTag::FUNC, f.envs.env.env};
 
 
         if (not f.type.params[0]->typeCheck(visitor, v, other)) return false;
@@ -254,7 +254,7 @@ namespace type {
         if (dynamic_cast<const TryReassign*>(&other)) return true;
         if (not dynamic_cast<const FuncType*>(&other)) return false;
 
-        // this might throw, but it technically shouldn't
+        // this could throw, but it should never do since we check it above
         const auto& that = dynamic_cast<const FuncType&>(other);
 
         if (params.size() != that.params.size()) return false;
@@ -262,7 +262,6 @@ namespace type {
         for (const auto& [type1, type2] : std::views::zip(params, that.params)) {
             if (not (*type2 >= *type1)) return false; // args have an inverse relationship
         }
-
 
         return *ret >= *that.ret;
     }
@@ -291,7 +290,7 @@ namespace type {
     std::string ListType::text(const size_t indent) const { return '{' + type->text(indent) + '}'; }
 
 
-    bool ListType::typeCheck(interp::Visitor *v, const value::Value& value, const TypePtr& other) const {
+    bool ListType::typeCheck(interp::Visitor *v, const value::Value& value, const TypePtr&) const {
         if (not std::holds_alternative<value::ListValue>(value)) return false;
 
         const auto& map = get<value::ListValue>(value);
@@ -322,7 +321,7 @@ namespace type {
     }
 
 
-    bool MapType::typeCheck(interp::Visitor *v, const value::Value& value, const TypePtr& other) const {
+    bool MapType::typeCheck(interp::Visitor *v, const value::Value& value, const TypePtr&) const {
         if (not std::holds_alternative<value::MapValue>(value)) return false;
 
         const auto& map = get<value::MapValue>(value);

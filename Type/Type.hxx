@@ -5,6 +5,8 @@
 #include <vector>
 #include <memory>
 
+#include "../Declarations.hxx"
+
 
 inline namespace pie {
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <ostream>
 #include <vector>
 #include <string>
@@ -8,6 +9,8 @@ inline namespace pie {
 inline namespace token {
 
 enum class TokenKind {
+    NONE = 0,
+
     ASSIGN,
     FAT_ARROW,
 
@@ -99,6 +102,10 @@ constexpr const char* stringify(const TokenKind token) noexcept {
         case IMPORT:        return "IMPORT";
         case NAMESPACE:     return "NAMESPACE";
         case USE:           return "USE";
+
+        case NONE:
+            std::cerr << "Internal Error!\n";
+            exit(1);
     }
 
     return "<UNNAMED>";

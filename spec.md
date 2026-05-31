@@ -1,3 +1,7 @@
+
+PLEASE NOTE THAT THE SPEC IS NOT DONE YET!
+------------------------------------------
+
 # The Pie Programming Language Official Specification
 
 

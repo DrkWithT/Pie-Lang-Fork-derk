@@ -5,12 +5,9 @@
 #include <string>
 #include <sstream>
 #include <source_location>
-#include <unordered_map>
-#include <variant>
 #include <format>
 #include <print>
 #include <concepts>
-#include <type_traits>
 #include <stdexcept>
 
 #include "../Lex/Token.hxx"
@@ -32,9 +29,6 @@ template <typename Except = std::runtime_error, bool print_loc = true>
         std::print(std::cerr, "\033[1m{}:{}:{}: \033[31merror:\033[0m ", location.file_name(), location.line(), location.column());
     #endif
 
-    // std::println(std::cerr, "{}", msg);
-
-    // exit(1);
 
     throw Except{std::string{msg}};
 }
@@ -74,10 +68,10 @@ Deferred(F) -> Deferred<F>;
 
 
 
-[[nodiscard]] inline std::string readFile(const std::string& fname) {
+[[nodiscard]] inline std::string readFile(const std::string& fname, const std::source_location& location = std::source_location::current()) {
     const std::ifstream fin{fname};
 
-    if (not fin.is_open()) error("File \"" + fname + " \" not found!");
+    if (not fin.is_open()) error("File \"" + fname + "\" not found!", location);
 
     std::stringstream ss;
     ss << fin.rdbuf();

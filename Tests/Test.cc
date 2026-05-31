@@ -19,6 +19,90 @@
 
 
 
+TEST_CASE("Importing Operators Filter By Type", "[Operator]") {
+    const auto src1 = R"(
+import Tests/module;
+
+use prefix std::-;
+
+std::print(- 1);
+)";
+
+    REQUIRE(pie::test::run(src1) == "-1");
+
+    const auto src2 = R"(
+import Tests/module;
+
+use infix std::-;
+
+std::print(1 - 1);
+)";
+
+    REQUIRE(pie::test::run(src2) == "0");
+
+    const auto src3 = R"(
+import Tests/module;
+
+use infix std::-;
+
+std::print(- 1);
+)";
+
+    REQUIRE_THROWS(pie::test::run(src3));
+
+    const auto src4 = R"(
+import Tests/module;
+
+use prefix std::-;
+
+std::print(1 - 1);
+)";
+
+    REQUIRE_THROWS(pie::test::run(src4));
+}
+
+
+
+TEST_CASE("Importing All Operators", "[Operator]") {
+    const auto src1 = R"(
+import Tests/module;
+use std::;
+
+std::print(- 10);
+std::print(1 + 2);
+std::print("1" + "2");
+std::print(3 - 4);
+)";
+
+    REQUIRE(pie::test::run(src1) == "-10\n3\n12\n-1");
+}
+
+
+TEST_CASE("Importing Operators Filter By Symbol", "[Operator]") {
+    const auto src1 = R"(
+import Tests/module;
+
+use infix std::+;
+
+std::print(1 + 2);
+std::print("1" + "2");
+)";
+
+    REQUIRE(pie::test::run(src1) == "3\n12");
+
+
+    const auto src2 = R"(
+import Tests/module;
+use infix std::+;
+
+std::print(3 - 4);
+)";
+
+    REQUIRE_THROWS(pie::test::run(src2));
+}
+
+
+
 TEST_CASE("Unions in Collection Types", "[Type][List][Map]") {
     const auto src1 = R"(
 Number = union { Int; Double; };

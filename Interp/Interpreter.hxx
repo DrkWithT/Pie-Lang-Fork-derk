@@ -3166,14 +3166,18 @@ public:
 
             //* nullary
             "print_env",
-            "panic", "true", "false", "input_str", "input_int",
+            "panic", "input_str", "input_int",
 
             //* unary
-            "type_of", "len", "reset", "eval","neg", "not", "to_int", "to_double", "to_string", //"read_file"
+            "type_of", "len", "reset", "eval","neg", "abs", "not", "to_int", "to_double", "to_string", //"read_file"
 
             //* binary
             "get", "push", "pop",
-            "add", "sub", "mul", "div", "mod", "pow", "gt", "geq", "eq", "leq", "lt", "and", "or",  
+            "add", "sub", "mul", "div", "mod",
+            "pow",
+            "gt", "geq", "eq", "leq", "lt",
+            "and", "or",  
+            "bit_and", "bit_or", "xor",
 
             //* trinary
             "set",
@@ -3280,6 +3284,15 @@ public:
                 S<"neg">,
                 Func<"neg",
                     decltype([](const auto& x, const auto&) { return -x; }),
+                    TypeList<BigInt>,
+                    TypeList<double>
+                >
+            >{},
+
+            MapEntry<
+                S<"abs">,
+                Func<"abs",
+                    decltype([](const auto& x, const auto&) { return std::abs(x); }),
                     TypeList<BigInt>,
                     TypeList<double>
                 >
@@ -3488,6 +3501,30 @@ public:
             >{},
 
             MapEntry<
+                S<"bit_and">,
+                Func<"bit_and",
+                    decltype([](const auto& a, const auto& b, const auto&) { return a & b; }),
+                    TypeList<BigInt, BigInt>
+                >
+            >{},
+
+            MapEntry<
+                S<"bit_or">,
+                Func<"bit_or",
+                    decltype([](const auto& a, const auto& b, const auto&) { return a | b; }),
+                    TypeList<BigInt, BigInt>
+                >
+            >{},
+
+            MapEntry<
+                S<"xor">,
+                Func<"xor",
+                    decltype([](const auto& a, const auto& b, const auto&) { return a ^ b; }),
+                    TypeList<BigInt, BigInt>
+                >
+            >{},
+
+            MapEntry<
                 S<"pow">,
                 Func<"pow",
                     decltype(
@@ -3575,17 +3612,6 @@ public:
             return 0;
         }
 
-
-        if (name == "true")  {
-            arity_check(0);
-            return execute<0>(stdx::get<S<"true">>(functions).value, {}, this);
-        }
-
-        if (name == "false") {
-            arity_check(0);
-            return execute<0>(stdx::get<S<"false">>(functions).value, {}, this);
-        }
-
         if (name == "input_str") {
             arity_check(0);
             return execute<0>(stdx::get<S<"input_str">>(functions).value, {}, this);
@@ -3633,7 +3659,7 @@ public:
 
 
 
-        if (name == "neg" or name == "not" or name == "reset") arity_check(1); // just for now..
+        if (name == "neg" or name == "abs" or name == "not" or name == "reset") arity_check(1); // just for now..
 
 
         // evaluating arguments from left to right as needed
@@ -3655,6 +3681,7 @@ public:
         if (name == "type_of"  ) return execute<1>(stdx::get<S<"type_of"   >>(functions).value, {value1}, this);
         if (name == "len"      ) return execute<1>(stdx::get<S<"len"       >>(functions).value, {value1}, this);
         if (name == "eval"     ) return execute<1>(stdx::get<S<"eval"      >>(functions).value, {value1}, this);
+        if (name == "abs"      ) return execute<1>(stdx::get<S<"abs"       >>(functions).value, {value1}, this);
         if (name == "neg"      ) return execute<1>(stdx::get<S<"neg"       >>(functions).value, {value1}, this);
         if (name == "not"      ) return execute<1>(stdx::get<S<"not"       >>(functions).value, {value1}, this);
         if (name == "pop"      ) return execute<1>(stdx::get<S<"pop"       >>(functions).value, {value1}, this);
@@ -3666,7 +3693,25 @@ public:
         // all the rest of those funcs expect 2 arguments
         using std::operator""sv;
 
-        const auto eager = {"get"sv, "push"sv, "add"sv, "sub"sv, "mul"sv, "div"sv, "mod"sv, "pow"sv, "gt"sv, "geq"sv, "eq"sv, "leq"sv, "lt"sv};
+        const auto eager = {
+            "get"sv,
+            "push"sv,
+            "add"sv,
+            "sub"sv,
+            "mul"sv,
+            "div"sv,
+            "bit_and"sv,
+            "bit_or"sv,
+            "xor"sv,
+            "mod"sv,
+            "pow"sv,
+            "gt"sv,
+            "geq"sv,
+            "eq"sv,
+            "leq"sv,
+            "lt"sv
+        };
+
         if (std::ranges::find(eager, name) != eager.end()) {
             arity_check(2);
             const auto& value2 = std::visit(*this, args[1]->variant());
@@ -3675,20 +3720,22 @@ public:
             if (name == "get" ) return execute<2>(stdx::get<S<"get" >>(functions).value, {value1, value2}, this);
             if (name == "push") return execute<2>(stdx::get<S<"push">>(functions).value, {value1, value2}, this);
 
-            if (name == "add") return execute<2>(stdx::get<S<"add">>(functions).value, {value1, value2}, this);
-            if (name == "sub") return execute<2>(stdx::get<S<"sub">>(functions).value, {value1, value2}, this);
-            if (name == "mul") return execute<2>(stdx::get<S<"mul">>(functions).value, {value1, value2}, this);
-            if (name == "div") return execute<2>(stdx::get<S<"div">>(functions).value, {value1, value2}, this);
-            if (name == "mod") return execute<2>(stdx::get<S<"mod">>(functions).value, {value1, value2}, this);
-            if (name == "pow") return execute<2>(stdx::get<S<"pow">>(functions).value, {value1, value2}, this);
-            if (name == "gt" ) return execute<2>(stdx::get<S<"gt" >>(functions).value, {value1, value2}, this);
-            if (name == "geq") return execute<2>(stdx::get<S<"geq">>(functions).value, {value1, value2}, this);
-            if (name == "eq" ) return execute<2>(stdx::get<S<"eq" >>(functions).value, {value1, value2}, this);
-            if (name == "leq") return execute<2>(stdx::get<S<"leq">>(functions).value, {value1, value2}, this);
-            if (name == "lt" ) return execute<2>(stdx::get<S<"lt" >>(functions).value, {value1, value2}, this);
+            if (name == "add"    ) return execute<2>(stdx::get<S<"add"    >>(functions).value, {value1, value2}, this);
+            if (name == "sub"    ) return execute<2>(stdx::get<S<"sub"    >>(functions).value, {value1, value2}, this);
+            if (name == "mul"    ) return execute<2>(stdx::get<S<"mul"    >>(functions).value, {value1, value2}, this);
+            if (name == "div"    ) return execute<2>(stdx::get<S<"div"    >>(functions).value, {value1, value2}, this);
+            if (name == "mod"    ) return execute<2>(stdx::get<S<"mod"    >>(functions).value, {value1, value2}, this);
+            if (name == "pow"    ) return execute<2>(stdx::get<S<"pow"    >>(functions).value, {value1, value2}, this);
+            if (name == "bit_and") return execute<2>(stdx::get<S<"bit_and">>(functions).value, {value1, value2}, this);
+            if (name == "bit_or" ) return execute<2>(stdx::get<S<"bit_or" >>(functions).value, {value1, value2}, this);
+            if (name == "xor"    ) return execute<2>(stdx::get<S<"xor"    >>(functions).value, {value1, value2}, this);
+            if (name == "gt"     ) return execute<2>(stdx::get<S<"gt"     >>(functions).value, {value1, value2}, this);
+            if (name == "geq"    ) return execute<2>(stdx::get<S<"geq"    >>(functions).value, {value1, value2}, this);
+            if (name == "eq"     ) return execute<2>(stdx::get<S<"eq"     >>(functions).value, {value1, value2}, this);
+            if (name == "leq"    ) return execute<2>(stdx::get<S<"leq"    >>(functions).value, {value1, value2}, this);
+            if (name == "lt"     ) return execute<2>(stdx::get<S<"lt"     >>(functions).value, {value1, value2}, this);
 
-            util::error("This shouldn't happen. File a bug report!");
-
+            util::error();
         }
 
 

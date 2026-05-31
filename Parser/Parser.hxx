@@ -1778,7 +1778,7 @@ public:
         using std::operator""s;
 
 		if (const Token token = lookAhead(); token.kind != exp) [[unlikely]] {
-            log();
+            // log();
             util::expected(exp, token, loc);
         }
 

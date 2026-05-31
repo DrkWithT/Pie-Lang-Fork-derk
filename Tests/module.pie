@@ -1,2 +1,14 @@
 
 space testing { x = 1; };
+
+space std {
+    print = __builtin_print;
+
+    infix + = (a, b) => __builtin_add(a, b);
+    infix + = (a: String, b: String) => __builtin_concat(a, b);
+
+    infix - = (a, b) => __builtin_sub(a, b);
+
+    prefix(!) - = (x) => __builtin_neg(x);
+};
+

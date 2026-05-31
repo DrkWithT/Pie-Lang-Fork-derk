@@ -1,6 +1,6 @@
 # Welcome to Pie Lang!
 
-![Pie Lang Logo](assets/images/PieLang_Logo_cool_bg.png)
+![Pie Lang Logo](assets/images/PieLang_Big_Transparent.png)
 
 [![C++ CI](https://github.com/AliAlmutawaJr/Pie/actions/workflows/cpp.yml/badge.svg)](https://github.com/AliAlmutawaJr/Pie/actions/workflows/cpp.yml)
 

@@ -1478,7 +1478,7 @@ public:
 
         enum class Type { NONE = 0, INT, BOOL, LIST, PACK, OBJECT };
         const auto classify = [](const Value& v) {
-            if (std::holds_alternative<BigInt  >(v)) return Type::INT ;
+            if (std::holds_alternative<BigInt   >(v)) return Type::INT ;
             if (std::holds_alternative<bool     >(v)) return Type::BOOL;
             if (std::holds_alternative<ListValue>(v)) return Type::LIST;
             if (std::holds_alternative<PackList >(v)) return Type::PACK;
@@ -1627,7 +1627,6 @@ public:
                     }
                 } break;
 
-                // use iterators (future update)
                 case Type::OBJECT: {
                     const auto& obj = get<Object>(kind);
 
@@ -1647,11 +1646,13 @@ public:
                     const auto& hasNext_func = get<expr::Closure>(hasNext);
                     const auto&    next_func = get<expr::Closure>(next   );
 
-                    if (
-                        not hasNext_func.type.params.empty() or hasNext_func.type.ret->text() != "Bool"
-                        or not next_func.type.params.empty()
-                    )
-                        util::error("Object in loop: " + loop->stringify() + " doesn't follow the iterator protocol!");
+                    // relaxing this. Allowing the user to not type-annotate iterator protocol functions
+                    // I can check the return type later
+                    // if (
+                    //     not hasNext_func.type.params.empty() or hasNext_func.type.ret->text() != "Bool"
+                    //     or not next_func.type.params.empty()
+                    // )
+                    //     util::error("Object in loop: " + loop->stringify() + " doesn't follow the iterator protocol!");
 
 
                     expr::Call hasNext_call{std::make_shared<expr::Closure>(hasNext_func)};
@@ -1660,7 +1661,12 @@ public:
                     if (not loop->var.name.empty()) {
                         const auto& [var_name, id] = loop->var;
 
-                        while(get<bool>(std::visit(*this, hasNext_call.variant()))) {
+
+                        value::Value cond = std::visit(*this, hasNext_call.variant());
+                        if (not std::holds_alternative<bool>(cond))
+                            util::error("Method `hasNext` did not produce a boolean value: " + hasNext_call.stringify() + "\nwhich is required in order to follow the iterator protocol!");
+
+                        while(get<bool>(cond)) {
                             continued = false;
 
                             addVar(
@@ -1672,17 +1678,32 @@ public:
                             ret = std::visit(*this, loop->body->variant());
 
                             if (broken) break;
+
+                            cond = std::visit(*this, hasNext_call.variant());
+                            if (not std::holds_alternative<bool>(cond))
+                                util::error("Method `hasNext` did not produce a boolean value: " + hasNext_call.stringify() + "\nwhich is required in order to follow the iterator protocol!");
                         }
                     }
-                    else while(get<bool>(std::visit(*this, hasNext_call.variant()))) {
-                        continued = false;
+                    else {
+                        value::Value cond = std::visit(*this, hasNext_call.variant());
+                        if (not std::holds_alternative<bool>(cond))
+                            util::error("Method `hasNext` did not produce a boolean value: " + hasNext_call.stringify() + "\nwhich is required in order to follow the iterator protocol!");
 
-                        std::visit(*this, next_call.variant());
+                        while(get<bool>(cond)) {
+                            continued = false;
 
-                        ret = std::visit(*this, loop->body->variant());
+                            std::visit(*this, next_call.variant());
 
-                        if (broken) break;
+                            ret = std::visit(*this, loop->body->variant());
+
+                            if (broken) break;
+
+                            cond = std::visit(*this, hasNext_call.variant());
+                            if (not std::holds_alternative<bool>(cond))
+                                util::error("Method `hasNext` did not produce a boolean value: " + hasNext_call.stringify() + "\nwhich is required in order to follow the iterator protocol!");
+                        }
                     }
+
 
                 } break;
 

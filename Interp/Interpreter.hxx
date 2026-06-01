@@ -1249,29 +1249,47 @@ public:
                         prefix_op->type() == TokenKind::EXFIX and
                         (use->op_name.empty() or name == use->op_name)
                     ) {
-                        env.back().prefix_op_env[name] = prefix_op;
+                        const auto exfix = dynamic_cast<const expr::Exfix*>(prefix_op.get());
+
+                        env.back().prefix_op_env[exfix->name ] = prefix_op;
+                        env.back().op_env       [exfix->name2] = prefix_op;
+
                         value = *dynamic_cast<expr::Closure*>(prefix_op->funcs[0].get());
                     }
                 break;
 
             case TokenKind::MIXFIX:
-                for (const auto& [name, prefix_op] : ns->prefix_op_env)
+                for (const auto& [name, prefix_op] : ns->prefix_op_env) {
                     if (
                         prefix_op->type() == TokenKind::MIXFIX and
                         (use->op_name.empty() or name == use->op_name)
                     ) {
-                        env.back().prefix_op_env[name] = prefix_op;
+                        const auto mixfix = dynamic_cast<const expr::Operator*>(prefix_op.get());
+
+                        env.back().prefix_op_env[mixfix->name] = prefix_op;
+                        for (const auto& sub_name : mixfix->rest) {
+                            env.back().op_env[sub_name] = prefix_op;
+                        }
+
                         value = *dynamic_cast<expr::Closure*>(prefix_op->funcs[0].get());
                     }
+                }
 
-                for (const auto& [name, op] : ns->op_env)
+                for (const auto& [name, op] : ns->op_env) {
                     if (
                         op->type() == TokenKind::MIXFIX and
                         (use->op_name.empty() or name == use->op_name)
                     ) {
-                        env.back().op_env[name] = op;
+                        const auto mixfix = dynamic_cast<const expr::Operator*>(op.get());
+
+                        env.back().prefix_op_env[mixfix->name] = op;
+                        for (const auto& sub_name : mixfix->rest) {
+                            env.back().op_env[sub_name] = op;
+                        }
+
                         value = *dynamic_cast<expr::Closure*>(op->funcs[0].get());
                     }
+                }
                 break;
 
             case TokenKind::NONE:
@@ -3142,31 +3160,63 @@ public:
             using enum TokenKind;
 
             case PREFIX:
-            case EXFIX :
                 if (prefixOpsContain(fix->name))
                     findPrefixOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
-                else env.back().prefix_op_env[fix->name] = fix->clone();
-
+                else
+                    env.back().prefix_op_env[fix->name] = fix->clone();
                 break;
+
+            case EXFIX : {
+                auto exfix = dynamic_cast<const expr::Exfix*>(fix);
+                if (prefixOpsContain(fix->name)) {
+
+                    findPrefixOp(exfix->name )->funcs.push_back(fix->funcs[0]);
+                    findPrefixOp(exfix->name2)->funcs.push_back(fix->funcs[0]);
+                }
+                else {
+                    env.back().prefix_op_env[exfix->name ] = fix->clone();
+                    env.back().prefix_op_env[exfix->name2] = fix->clone();
+                }
+
+            }
+            break;
 
             case INFIX :
             case SUFFIX:
                 if (opsContain(fix->name))
-                    findOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
+                    findOp(fix->name)->funcs.push_back(fix->funcs[0]);
                 else env.back().op_env[fix->name] = fix->clone();
                 break;
 
             case MIXFIX: {
                 auto mixfix = dynamic_cast<const expr::Operator*>(fix);
-                if (mixfix->op_pos.front()) {
-                    if (prefixOpsContain(fix->name))
-                        findPrefixOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
-                    else env.back().prefix_op_env[fix->name] = fix->clone();
+                if (mixfix->isPrefix()) {
+                    if (prefixOpsContain(mixfix->name)) {
+                        findPrefixOp(mixfix->name)->funcs.push_back(mixfix->funcs[0]);
+                        for (const auto& sub_name : mixfix->rest) {
+                            findOp(sub_name)->funcs.push_back(mixfix->funcs[0]);
+                        }
+                    }
+                    else {
+                        env.back().prefix_op_env[mixfix->name] = mixfix->clone();
+
+                        for (const auto& sub_name : mixfix->rest)
+                            env.back().op_env[sub_name] = mixfix->clone();
+                    }
                 }
                 else {
-                    if (opsContain(fix->name))
-                        findOp(fix->name)->funcs.push_back(fix->funcs[0]); // assuming each fix expression has a single func in it
-                    else env.back().op_env[fix->name] = fix->clone();
+                    if (opsContain(fix->name)) {
+                        findOp(fix->name)->funcs.push_back(fix->funcs[0]);
+                        for (const auto& sub_name : mixfix->rest) {
+                            findOp(sub_name)->funcs.push_back(mixfix->funcs[0]);
+                        }
+                    }
+                    else {
+                        env.back().op_env[mixfix->name] = mixfix->clone();
+
+                        for (const auto& sub_name : mixfix->rest)
+                            env.back().op_env[sub_name] = mixfix->clone();
+                    }
                 }
             }
 

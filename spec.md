@@ -336,7 +336,7 @@ a = false;
 
 var: Int = 5;
 var: String = "five";
-```
+````
 
 The following program is ill-formed:
 ```pie
@@ -1064,6 +1064,7 @@ s = "Pie" + " is cool";
 `x` will be `3`, and `s` will be `"Pie is cool"`.
 
 #### 6.2.1 Overload Resolution
+
 ...
 
 

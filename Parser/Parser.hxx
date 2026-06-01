@@ -846,8 +846,12 @@ public:
                     if (
                         kind == EXFIX and
                         (name.empty() or op_name == name)
-                    )
-                        env.back().first.prefix_op_env[op_name] = op;
+                    ) {
+                        auto exfix = dynamic_cast<const expr::Exfix*>(op.get());
+
+                        env.back().first.prefix_op_env[exfix->name ] = op;
+                        env.back().first.op_env       [exfix->name2] = op;
+                    }
                 break;
 
             case MIXFIX:
@@ -855,15 +859,31 @@ public:
                     if (
                         kind == MIXFIX and
                         (name.empty() or op_name == name)
-                    )
-                        env.back().first.prefix_op_env[op_name] = op;
+                    ) {
+                        auto mixfix = dynamic_cast<const expr::Operator*>(op.get());
+
+                        env.back().first.prefix_op_env[mixfix->name] = op;
+                        for (const auto& sub_name : mixfix->rest) {
+                            env.back().first.op_env[sub_name] = op;
+                        }
+                    }
 
                 for (const auto& [op_name, op] : ns->ops)
                     if (
                         kind == MIXFIX and
                         (name.empty() or op_name == name)
-                    )
-                        env.back().first.op_env[op_name] = op;
+                    ) {
+                        auto mixfix = dynamic_cast<const expr::Operator*>(op.get());
+
+                        if (op->isPrefix())
+                            env.back().first.prefix_op_env[mixfix->name] = op;
+                        else
+                            env.back().first.op_env       [mixfix->name] = op;
+
+                        for (const auto& sub_name : mixfix->rest) {
+                            env.back().first.op_env[sub_name] = op;
+                        }
+                    }
                 break;
 
             case NONE:
@@ -1725,12 +1745,12 @@ public:
 
 
         if (is_prefix) {
-            env.back().first.prefix_op_env[p->name] = p->clone();
-            for (const auto& name : rest) env.back().first.prefix_op_env[name] = p->clone();
+            env.back().first.prefix_op_env[p->name] = p;
+            for (const auto& name : rest) env.back().first.op_env[name] = p;
         }
         else {
-            env.back().first.op_env[p->name] = p->clone();
-            for (const auto& name : rest) env.back().first.op_env[name] = p->clone();
+            env.back().first.op_env[p->name] = p;
+            for (const auto& name : rest) env.back().first.op_env[name] = p;
         }
 
 

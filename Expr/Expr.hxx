@@ -1197,6 +1197,7 @@ struct Fix : Expr {
     virtual std::unique_ptr<Fix> clone() const = 0;
     virtual std::string OpName() const = 0;
     virtual TokenKind type() const = 0;
+    virtual bool isPrefix() const = 0;
 };
 
 
@@ -1225,6 +1226,8 @@ struct Prefix : Fix {
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Prefix>(*this); }
     std::string OpName() const override { return name; }
     TokenKind type() const override { return TokenKind::PREFIX; }
+    bool isPrefix() const override { return true; }
+
     Node variant() override { return this; }
 };
 
@@ -1251,6 +1254,8 @@ struct Infix : Fix {
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Infix>(*this); }
     std::string OpName() const override { return name; }
     TokenKind type() const override { return TokenKind::INFIX; }
+    bool isPrefix() const override { return false; }
+
     Node variant() override { return this; }
 };
 
@@ -1277,6 +1282,8 @@ struct Suffix : Fix {
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Suffix>(*this); }
     std::string OpName() const override { return name; }
     TokenKind type() const override { return TokenKind::SUFFIX; }
+    bool isPrefix() const override { return false; }
+
     Node variant() override { return this; }
 };
 
@@ -1305,6 +1312,8 @@ struct Exfix : Fix {
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Exfix>(*this); }
     std::string OpName() const override { return name + ':' + name2; }
     TokenKind type() const override { return TokenKind::EXFIX; }
+    bool isPrefix() const override { return true; }
+
     Node variant() override { return this; }
 };
 
@@ -1329,7 +1338,7 @@ struct Operator : Fix {
     // begin_expr{begin}, end_expr{end}
     {
         if (size_t(std::ranges::count(op_pos, true)) != rest.size() + 1)// + 1 for first
-            util::error("ERROR!! This should never happen..,");
+            util::error();
     }
 
 
@@ -1345,7 +1354,7 @@ struct Operator : Fix {
         if (shift) shifts.append(" ").push_back(c);
 
 
-        return "operator(" + token + shifts + ") " + OpName() + " = " + funcs[0]->stringify(indent);
+        return "mixfix (" + token + shifts + ") " + OpName() + " = " + funcs[0]->stringify(indent);
     }
 
 
@@ -1365,6 +1374,8 @@ struct Operator : Fix {
     }
     std::unique_ptr<Fix> clone() const override { return std::make_unique<Operator>(*this); }
     TokenKind type() const override { return TokenKind::MIXFIX; }
+    bool isPrefix() const override { return op_pos[0]; }
+
     Node variant() override { return this; }
 };
 

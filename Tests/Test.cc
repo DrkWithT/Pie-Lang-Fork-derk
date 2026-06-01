@@ -19,6 +19,47 @@
 
 
 
+
+
+TEST_CASE("Importing Mixfix With Prefix and Latter Operator Name", "[Operator]") {
+    const auto src1 = R"(
+space std {
+    mixfix(LOW +) if : : else : =
+        (cond: Bool, thn, els) =>
+            __builtin_conditional(cond, thn, els);
+};
+
+
+use mixfix std::else;
+
+print = __builtin_print;
+
+if (false) 1 else 2;
+)";
+
+    REQUIRE_NOTHROW(pie::test::run(src1));
+
+    const auto src2 = R"(
+space std {
+    mixfix(LOW +) if : : else : =
+        (cond: Bool, thn, els) =>
+            __builtin_conditional(cond, thn, els);
+};
+
+
+use mixfix std::if;
+
+print = __builtin_print;
+
+if (false) 1 else 2;
+)";
+
+    REQUIRE_NOTHROW(pie::test::run(src2));
+}
+
+
+
+
 TEST_CASE("Importing Operators Filter By Type", "[Operator]") {
     const auto src1 = R"(
 import Tests/module;

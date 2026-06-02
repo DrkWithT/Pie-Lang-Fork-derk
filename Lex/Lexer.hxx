@@ -47,6 +47,7 @@ inline TokenKind keyword(const std::string_view word) noexcept {
 
 inline bool validNameChar(const char c) noexcept {
     switch (c) {
+        case '?':
         case '!':
         case '@':
         case '#':
@@ -117,6 +118,7 @@ inline bool validNameChar(const char c) noexcept {
             } break;
 
 
+            case '?':
             case '!':
             case '@':
             case '#':

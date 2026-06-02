@@ -14,7 +14,7 @@
 
 
 inline namespace pie {
-inline namespace value {
+namespace value {
 
 struct Fields;
 struct ClassValue { std::shared_ptr<Fields> blueprint; };
@@ -62,11 +62,11 @@ std::string stringify(const Value& value, const size_t indent = {});
 
 // needed for maps
 template<>
-struct std::hash<Value> { size_t operator()(const pie::value::Value& value) const { return std::hash<std::string>{}(pie::value::stringify(value)); } };
+struct std::hash<value::Value> { size_t operator()(const value::Value& value) const { return std::hash<std::string>{}(pie::value::stringify(value)); } };
 
 
 inline namespace pie {
-inline namespace value {
+namespace value {
 
 struct Fields   { std::vector<std::tuple<expr::Name, type::TypePtr, expr::ExprPtr  >> fields;  };
 struct Members  { std::vector<std::tuple<expr::Name, type::TypePtr, value::ValuePtr>> members; };

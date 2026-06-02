@@ -15,7 +15,7 @@ namespace expr {
     using ExprPtr = std::shared_ptr<expr::Expr>;
 }
 
-inline namespace value {
+namespace value {
     struct ClassValue;
     struct Value;
     using ValuePtr = std::shared_ptr<Value>;

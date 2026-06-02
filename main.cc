@@ -46,6 +46,7 @@ int main(int argc, char *argv[]) {
             return 0;
         }
 
+        #if not WEB_PIE
         if (content.empty() or repl) {
             pie::cli::REPL(
                 std::move(canonical_root),
@@ -55,6 +56,7 @@ int main(int argc, char *argv[]) {
         else {
             pie::cli::runFile(std::filesystem::path(content), print_tokens, print_parsed, run);
         }
+        #endif
     }
     catch(const std::exception& e) {
         std::cerr << e.what() << std::endl;

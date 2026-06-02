@@ -25,7 +25,7 @@ using Operators  = std::unordered_map<std::string, std::shared_ptr<expr::Fix>>;
 
 namespace interp { struct NameSpace; }
 
-inline namespace value {
+namespace value {
     struct Value;
     using ValuePtr = std::shared_ptr<Value>;
 

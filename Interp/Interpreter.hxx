@@ -30,7 +30,7 @@
 #include "../Type/Type.hxx"
 #include "../Parser/Parser.hxx"
 
-#include "Value.hxx"
+#include "../Value/Value.hxx"
 
 
 inline namespace pie {
@@ -76,7 +76,7 @@ class Visitor {
     std::vector<NameSpace*> current_space;
 
     // _this_ (or self) context
-    std::vector<Object> selves{};
+    std::vector<value::Object> selves{};
 
 
     // loop context
@@ -152,7 +152,7 @@ public:
     }
 
 
-    Value operator()(const expr::Num *n) {
+    value::Value operator()(const expr::Num *n) {
         if (const auto& var = getVar(n->ID); var) return var->first;
 
 
@@ -162,21 +162,21 @@ public:
     }
 
 
-    Value operator()(const expr::Bool *b) {
+    value::Value operator()(const expr::Bool *b) {
         if (const auto& var = getVar(b->ID); var) return var->first;
 
         return b->boolean;
     }
 
 
-    Value operator()(const expr::String *s) {
+    value::Value operator()(const expr::String *s) {
         if (const auto& var = getVar(s->ID); var) return var->first;
 
         return s->str;
     }
 
 
-    std::optional<Value> checkMemberInThisObject(const std::string& name) {
+    std::optional<value::Value> checkMemberInThisObject(const std::string& name) {
         if (selves.empty()) return {};
 
         for (const auto& self : std::views::reverse(selves)) {
@@ -189,7 +189,7 @@ public:
     }
 
 
-    void changeThis(const std::string& name, Value val) {
+    void changeThis(const std::string& name, const value::Value& val) {
         if (selves.empty()) util::error();
 
         for (const auto& self : std::views::reverse(selves)){
@@ -204,7 +204,7 @@ public:
         util::error("Name '" + name + "' not found in object: " + stringify(selves.back()));
     }
 
-    Value fetchRef(const expr::Name *n) {
+    value::Value fetchRef(const expr::Name *n) {
         for (const auto& [e, _, __, ___] : std::views::reverse(env)) {
             if (e.contains(n->ID)) {
                 const auto& [named_ref, value_ptr, type_ptr] = e.at(n->ID);
@@ -222,7 +222,7 @@ public:
     }
 
 
-    Value operator()(const expr::Name *n) {
+    value::Value operator()(const expr::Name *n) {
         // what should builtins evaluate to?
         // If I return the string back, then expressions like `"__builtin_neg"(1)` are valid now :))))
         // interesting!
@@ -255,25 +255,24 @@ public:
     }
 
 
-    // Value operator()(const expr::Pack*) { error(); }
-    Value operator()(const expr::Expansion*) { util::error("Can only expand in function calls or fold expressions!"); }
+    value::Value operator()(const expr::Expansion*) { util::error("Can only expand in function calls or fold expressions!"); }
 
 
-    Value operator()(const expr::List* list) {
+    value::Value operator()(const expr::List* list) {
         if (const auto& var = getVar(list->ID); var) return var->first;
 
-        std::vector<Value> values;
+        std::vector<value::Value> values;
         std::transform(
             list->elements.cbegin(), list->elements.cend(), std::back_inserter(values),
             [this] (const auto& expr) { return std::visit(*this, expr->variant()); }
         );
 
-        return makeList(std::move(values));
+        return value::makeList(std::move(values));
     }
 
 
-    Value operator()(const expr::Map* map) {
-        MapValue map_value{std::make_shared<Items>()};
+    value::Value operator()(const expr::Map* map) {
+        value::MapValue map_value{std::make_shared<value::Items>()};
 
         for (auto [key, expr] : map->items) {
             // evaluating key here first instead of at function arguments
@@ -290,7 +289,7 @@ public:
     }
 
 
-    value::Value typeCheck(Value value, const type::TypePtr& type, std::string err_msg = "", const std::source_location& location = std::source_location::current()) {
+    value::Value typeCheck(const value::Value& value, const type::TypePtr& type, std::string err_msg = "", const std::source_location& location = std::source_location::current()) {
         const auto value_type = typeOf(value);
         if (err_msg.empty()) err_msg = "Expected type '" + type->text() + "', got type '" + value_type->text() + '\'';
 
@@ -298,7 +297,7 @@ public:
 
         if (const auto cls = type::isClass(type)) {
             auto obj = get<value::Object>(value);
-            obj.second = std::make_shared<Members>(obj.second->members);
+            obj.second = std::make_shared<value::Members>(obj.second->members);
 
             std::erase_if(
                 obj.second->members,
@@ -319,23 +318,23 @@ public:
     }
 
 
-    Value operator()(const expr::UnaryFold *fold) {
+    value::Value operator()(const expr::UnaryFold *fold) {
         if (const auto& var = getVar(fold->ID); var) return var->first;
 
-        Value pack = std::visit(*this, fold->pack->variant());
+        value::Value pack = std::visit(*this, fold->pack->variant());
 
-        if (not std::holds_alternative<PackList>(pack)) util::error("Folding over a non-pack: " + stringify(pack));
+        if (not std::holds_alternative<value::PackList>(pack)) util::error("Folding over a non-pack: " + stringify(pack));
 
-        auto& packlist = get<PackList>(pack);
+        auto& packlist = get<value::PackList>(pack);
 
         if (packlist->values.empty()) util::error("Folding over an empty pack: " + fold->stringify());
         if (packlist->values.size() == 1) return packlist->values[0];
 
 
-        Value ret = fold->left_to_right ? packlist->values.front() : packlist->values.back(); // [packlist->values.size() - 2];
+        value::Value ret = fold->left_to_right ? packlist->values.front() : packlist->values.back(); // [packlist->values.size() - 2];
         const auto values = fold->left_to_right?
-            packlist->values |                       std::views::drop(1) | std::views::as_rvalue | std::ranges::to<std::vector<Value>>():
-            packlist->values | std::views::reverse | std::views::drop(1) | std::views::as_rvalue | std::ranges::to<std::vector<Value>>();
+            packlist->values |                       std::views::drop(1) | std::views::as_rvalue | std::ranges::to<std::vector<value::Value>>():
+            packlist->values | std::views::reverse | std::views::drop(1) | std::views::as_rvalue | std::ranges::to<std::vector<value::Value>>();
 
         const auto& op = findOp(fold->op);
 
@@ -375,9 +374,9 @@ public:
                     ", got: " + stringify(value) + " which is " + typeOf(value)->text()
                 );
 
-                Environment args_env;
-                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<Value>(ret  ), func->type.params[ first_idx]};
-                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<Value>(value), func->type.params[second_idx]};
+                value::Environment args_env;
+                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<value::Value>(ret  ), func->type.params[ first_idx]};
+                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<value::Value>(value), func->type.params[second_idx]};
 
 
                 ScopeGuard sg{this, args_env};
@@ -401,12 +400,12 @@ public:
                 func->type.params[second_idx] = validateType(std::move(func)->type.params[second_idx]);
 
 
-                Environment args_env;
+                value::Environment args_env;
                 args_env[func->params[1 - fold->left_to_right].ID] =
-                    {{func->params[1 - fold->left_to_right].name}, std::make_shared<Value>(ret)  , func->type.params[1 - fold->left_to_right]};
+                    {{func->params[1 - fold->left_to_right].name}, std::make_shared<value::Value>(ret)  , func->type.params[1 - fold->left_to_right]};
 
                 args_env[func->params[    fold->left_to_right].ID] =
-                    {{func->params[    fold->left_to_right].name}, std::make_shared<Value>(value), func->type.params[    fold->left_to_right]};
+                    {{func->params[    fold->left_to_right].name}, std::make_shared<value::Value>(value), func->type.params[    fold->left_to_right]};
 
 
                 ScopeGuard sg{this, args_env};
@@ -419,16 +418,16 @@ public:
     }
 
 
-    Value operator()(const expr::SeparatedUnaryFold *fold) {
+    value::Value operator()(const expr::SeparatedUnaryFold *fold) {
         if (const auto& var = getVar(fold->ID); var) return var->first;
 
 
-        Value lhs = std::visit(*this, fold->lhs->variant());
-        Value rhs = std::visit(*this, fold->rhs->variant());
+        value::Value lhs = std::visit(*this, fold->lhs->variant());
+        value::Value rhs = std::visit(*this, fold->rhs->variant());
 
 
-        const auto l_pack = std::holds_alternative<PackList>(lhs), l2r = l_pack;
-        const auto r_pack = std::holds_alternative<PackList>(rhs);
+        const auto l_pack = std::holds_alternative<value::PackList>(lhs), l2r = l_pack;
+        const auto r_pack = std::holds_alternative<value::PackList>(rhs);
 
 
         if (l_pack == r_pack) {
@@ -436,17 +435,17 @@ public:
             util::error(err + fold->lhs->stringify() + "' and '" + fold->rhs->stringify() + '\'');
         }
 
-        Value pack = l_pack? std::move(lhs) : std::move(rhs);
-        Value sep  = r_pack? std::move(lhs) : std::move(rhs);
+        value::Value pack = l_pack? std::move(lhs) : std::move(rhs);
+        value::Value sep  = r_pack? std::move(lhs) : std::move(rhs);
 
-        auto& packlist = get<PackList>(pack);
+        auto& packlist = get<value::PackList>(pack);
 
         if (packlist->values.empty()) util::error("Folding over an empty pack: " + fold->stringify());
         if (packlist->values.size() == 1) return packlist->values[0];
 
 
-        Value ret;
-        std::vector<Value> values;
+        value::Value ret;
+        std::vector<value::Value> values;
         values.reserve(packlist->values.size() * 2 - 1);
         if (l2r) {
             ret = std::move(packlist)->values[0];
@@ -510,9 +509,9 @@ public:
                 );
 
 
-                Environment args_env;
-                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<Value>(ret)  , func->type.params[ first_idx]};
-                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<Value>(value), func->type.params[second_idx]};
+                value::Environment args_env;
+                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<value::Value>(ret)  , func->type.params[ first_idx]};
+                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<value::Value>(value), func->type.params[second_idx]};
 
 
                 ScopeGuard sg{this, args_env};
@@ -535,9 +534,9 @@ public:
                 func->type.params[second_idx] = validateType(std::move(func)->type.params[second_idx]);
 
 
-                Environment args_env;
-                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<Value>(ret)  , func->type.params[ first_idx]};
-                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<Value>(value), func->type.params[second_idx]};
+                value::Environment args_env;
+                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<value::Value>(ret)  , func->type.params[ first_idx]};
+                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<value::Value>(value), func->type.params[second_idx]};
 
 
                 ScopeGuard sg{this, args_env};
@@ -550,27 +549,27 @@ public:
     }
 
 
-    Value operator()(const expr::BinaryFold *fold) {
+    value::Value operator()(const expr::BinaryFold *fold) {
         if (const auto& var = getVar(fold->ID); var) return var->first;
 
 
-        Value pack = std::visit(*this, fold->pack->variant());
-        Value init = std::visit(*this, fold->init->variant());
+        value::Value pack = std::visit(*this, fold->pack->variant());
+        value::Value init = std::visit(*this, fold->init->variant());
 
-        auto& packlist = get<PackList>(pack);
+        auto& packlist = get<value::PackList>(pack);
 
         if (packlist->values.empty()) return init;
 
 
         // ! check this line later
-        // Value ret = fold->left_to_right ? std::move(init) : packlist->values.back();
-        Value ret = std::move(init);
+        // value::Value ret = fold->left_to_right ? std::move(init) : packlist->values.back();
+        value::Value ret = std::move(init);
 
-        // std::vector<Value> values = std::move(packlist)->values;
+        // std::vector<value::Value> values = std::move(packlist)->values;
 
         // if (not fold->left_to_right) std::ranges::reverse(packlist->values);
 
-        std::vector<Value> values;
+        std::vector<value::Value> values;
         if (fold->left_to_right) {
             if (fold->sep) {
                 const auto sep = std::visit(*this, fold->sep->variant());
@@ -617,7 +616,7 @@ public:
             func->type.params[second_idx] = validateType(std::move(func)->type.params[second_idx]);
 
 
-            for (Environment args_env; const auto& value : values) {
+            for (value::Environment args_env; const auto& value : values) {
 
                 typeCheck(ret, func->type.params[first_idx],
                     "Type mis-match in Fold expressions with Infix operator '" + fold->op + 
@@ -635,8 +634,8 @@ public:
                 );
 
 
-                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<Value>(ret)  , func->type.params[ first_idx]};
-                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<Value>(value), func->type.params[second_idx]};
+                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<value::Value>(ret)  , func->type.params[ first_idx]};
+                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<value::Value>(value), func->type.params[second_idx]};
 
 
                 ScopeGuard sg{this, args_env};
@@ -647,7 +646,7 @@ public:
         else { // fuck me
             // checkNoSyntaxType(op->funcs);
 
-            for (Environment args_env; const auto& value : values) {
+            for (value::Environment args_env; const auto& value : values) {
                 // auto type1 = validateType(typeOf(ret  ));
                 // auto type2 = validateType(typeOf(value));
 
@@ -658,8 +657,8 @@ public:
                 func->type.params[second_idx] = validateType(std::move(func)->type.params[second_idx]);
 
 
-                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<Value>(ret)  , func->type.params[ first_idx]};
-                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<Value>(value), func->type.params[second_idx]};
+                args_env[func->params[ first_idx].ID] = {{func->params[ first_idx].name}, std::make_shared<value::Value>(ret)  , func->type.params[ first_idx]};
+                args_env[func->params[second_idx].ID] = {{func->params[second_idx].name}, std::make_shared<value::Value>(value), func->type.params[second_idx]};
 
 
                 ScopeGuard sg{this, args_env};
@@ -672,7 +671,7 @@ public:
     }
 
 
-    Value accessAssign(const expr::Assignment *ass, expr::Access *acc) {
+    value::Value accessAssign(const expr::Assignment *ass, expr::Access *acc) {
         if (auto name = dynamic_cast<const expr::Name*>(acc->var.get()); name and name->name == "self") {
             if (selves.empty())
                 util::error("Can't use 'self' outside of class scope: " + ass->stringify()); // shouldn't happen anyway
@@ -687,9 +686,9 @@ public:
 
         const auto& left = std::visit(*this, acc->var->variant());
 
-        if (not std::holds_alternative<Object>(left)) util::error("Can't access a non-class type!");
+        if (not std::holds_alternative<value::Object>(left)) util::error("Can't access a non-class type!");
 
-        const auto& obj = get<Object>(left);
+        const auto& obj = get<value::Object>(left);
 
         const auto& found = std::ranges::find_if(obj.second->members,
             [name = acc->name] (const auto& member) { return get<expr::Name>(member).stringify() == name; }
@@ -704,15 +703,15 @@ public:
         );
 
 
-        // get<Value>(*found) = value;
-        *get<ValuePtr>(*found) = value;
+        // get<value::Value>(*found) = value;
+        *get<value::ValuePtr>(*found) = value;
 
         return value;
     }
 
 
 
-    Value spaceAccessAssign(const expr::Assignment *ass, expr::SpaceAccess *sa) {
+    value::Value spaceAccessAssign(const expr::Assignment *ass, expr::SpaceAccess *sa) {
         const auto space = findNS(sa->spaces, sa->global);
 
         // should never happen now that there is lexical analysis
@@ -745,7 +744,7 @@ public:
 
 
 
-    Value refAssign(const expr::Assignment *ass, const expr::Name* name) {
+    value::Value refAssign(const expr::Assignment *ass, const expr::Name* name) {
 
         for (const auto& [e, _, __, ___] : std::views::reverse(env)) {
             if (e.contains(name->ID)) {
@@ -777,7 +776,7 @@ public:
     }
 
 
-    Value nameAssign(const expr::Assignment *ass, const expr::Name* name) {
+    value::Value nameAssign(const expr::Assignment *ass, const expr::Name* name) {
         // type::TypePtr type = type::builtins::Any();
         // type::TypePtr type = name->type;
         type::TypePtr type = ass->type;
@@ -843,7 +842,7 @@ public:
     }
 
 
-    Value operator()(const expr::Assignment *ass) {
+    value::Value operator()(const expr::Assignment *ass) {
         // assigning to x.y should never create a variable "x.y" bu access x and change y;
         if (auto *acc = dynamic_cast<expr::Access*>(ass->lhs.get())) return accessAssign(ass, acc);
 
@@ -869,7 +868,7 @@ public:
     }
 
 
-    Value operator()(const expr::Class *cls) {
+    value::Value operator()(const expr::Class *cls) {
         if (const auto& var = getVar(cls->ID); var) return var->first;
 
 
@@ -882,14 +881,14 @@ public:
                 )
             );
 
-        // std::vector<std::tuple<expr::Name, type::TypePtr, ValuePtr>> members;
+        // std::vector<std::tuple<expr::Name, type::TypePtr, value::ValuePtr>> members;
 
         // ScopeGuard sg{this};
         // for (const auto& [name, typ, expr] : cls->fields) {
 
         //     type::TypePtr type = typ;
 
-        //     Value v;
+        //     value::Value v;
         //     if (type->text() == "Syntax") {
         //         // members.push_back({{field.first.stringify(), type::builtins::Syntax()}, field.second->variant()});
         //         type = type::builtins::Syntax();
@@ -909,13 +908,13 @@ public:
 
         //     // maybe not allowing the usage of previous members in the initializers of other members is the way? not sure
         //     // addVar(name.stringify(), v, type);
-        //     members.push_back({name, type, std::make_shared<Value>(v)});
+        //     members.push_back({name, type, std::make_shared<value::Value>(v)});
         // }
 
         // return // getting lispy :sob: fuck this memory ass shit
         //     std::make_shared<type::LiteralType>(
-        //         std::make_shared<ClassValue>(
-        //             std::make_shared<Members>(
+        //         std::make_shared<value::ClassValue>(
+        //             std::make_shared<value::Members>(
         //                 std::move(members)
         //             )
         //         )
@@ -923,7 +922,7 @@ public:
     }
 
 
-    Value operator()(const expr::Union *onion) {
+    value::Value operator()(const expr::Union *onion) {
         if (const auto& var = getVar(onion->ID); var) return var->first;
 
 
@@ -936,14 +935,14 @@ public:
     }
 
 
-    Value objectAccess(const Object& obj, const std::string& name) {
+    value::Value objectAccess(const value::Object& obj, const std::string& name) {
         const auto& found = std::ranges::find_if(obj.second->members, [&name] (const auto& member) { return get<0>(member).stringify() == name; });
         if (found == obj.second->members.end()) util::error("Name '" + name + "' doesn't exist in object '" + /*acc->var->*/ stringify(obj) + '\'');
 
-        if (std::holds_alternative<expr::Closure>(*get<ValuePtr>(*found))) {
-            const auto& closure = get<expr::Closure>(*get<ValuePtr>(*found));
+        if (std::holds_alternative<expr::Closure>(*get<value::ValuePtr>(*found))) {
+            const auto& closure = get<expr::Closure>(*get<value::ValuePtr>(*found));
 
-            // Environment capture_list;
+            // value::Environment capture_list;
             // for (const auto& [name, value] : obj.second->members)
             //     capture_list[name.stringify()] = {value, typeOf(value)};
 
@@ -954,11 +953,11 @@ public:
             return closure;
         }
 
-        return *get<ValuePtr>(*found);
+        return *get<value::ValuePtr>(*found);
     }
 
 
-    Value operator()(const expr::Access *acc) {
+    value::Value operator()(const expr::Access *acc) {
 
         // in case user does self.xyz
         if (auto var = dynamic_cast<const expr::Name*>(acc->var.get()); var and var->name == "self") {
@@ -973,14 +972,14 @@ public:
         }
 
         const auto& left = std::visit(*this, acc->var->variant());
-        if (std::holds_alternative<Object>(left)) return objectAccess(std::get<Object>(left), acc->name);
+        if (std::holds_alternative<value::Object>(left)) return objectAccess(std::get<value::Object>(left), acc->name);
 
 
         util::error("Can't access a non-class type!");
     }
 
 
-    Value operator()(const expr::Cascade *) {
+    value::Value operator()(const expr::Cascade *) {
         util::error();
     }
 
@@ -1108,7 +1107,7 @@ public:
 
 
 
-    Value operator()(const expr::Namespace *ns) {
+    value::Value operator()(const expr::Namespace *ns) {
         if (const auto& var = getVar(ns->ID); var) return var->first;
 
 
@@ -1121,7 +1120,7 @@ public:
         // const auto ns_name = NSName(current_space);
         // if (namespaces.contains(ns_name)) sg.addEnv(namespaces.at(ns_name));
 
-        Value value;
+        value::Value value;
         // execute all the expressions in the namespace
         for (const auto& expr : ns->space)
             value = std::visit(*this, expr->variant());
@@ -1144,7 +1143,7 @@ public:
     }
 
 
-    Value operator()(const expr::Use *use) {
+    value::Value operator()(const expr::Use *use) {
         if (const auto& var = getVar(use->ID); var) return var->first;
 
 
@@ -1160,7 +1159,7 @@ public:
         // return *get<2>(env[use->name.ID]);
     }
 
-    Value operator()(const expr::UseSpace *use) {
+    value::Value operator()(const expr::UseSpace *use) {
         if (const auto& var = getVar(use->ID); var) return var->first;
 
         const auto ns = findNS(use->spaces, use->global);
@@ -1168,7 +1167,7 @@ public:
         // lexical scoping must've taken care of that
         // if (not namespaces.contains(space)) util::error("space '" + space + "' not found!");
 
-        Value v;
+        value::Value v;
         for (const auto& [ID, t_v] : ns->members) {
             const auto& [name, value, type] = t_v;
 
@@ -1204,7 +1203,7 @@ public:
     }
 
 
-    Value operator()(const expr::UseFix *use) {
+    value::Value operator()(const expr::UseFix *use) {
         const auto ns = findNS(use->spaces, use->global);
 
         std::optional<value::Value> value;
@@ -1342,7 +1341,7 @@ public:
     }
 
 
-    Value operator()(const expr::Import *import) {
+    value::Value operator()(const expr::Import *import) {
 
         const auto src = util::readFile(auto{import->path}.replace_extension(".pie").string());
         const Tokens tokens = lex::lex(src);
@@ -1362,7 +1361,7 @@ public:
 
 
 
-        Value value;
+        value::Value value;
         Visitor v{std::move(ls).indeces};
         for (const auto& expr : exprs)
             // value = std::visit(*this, std::move(expr)->variant());
@@ -1376,7 +1375,7 @@ public:
     }
 
 
-    Value operator()(const expr::SpaceAccess *sa) {
+    value::Value operator()(const expr::SpaceAccess *sa) {
         if (const auto& var = getVar(sa->ID); var) return var->first;
 
         const auto space = findNS(sa->spaces, sa->global);
@@ -1390,7 +1389,7 @@ public:
 
 
 
-    bool match(const Value& value, const expr::Match::Case::Pattern& pattern) {
+    bool match(const value::Value& value, const expr::Match::Case::Pattern& pattern) {
         if (std::holds_alternative<expr::Match::Case::Pattern::Single>(pattern.pattern)) {
             const auto& [name, typ, val_expr] = get<expr::Match::Case::Pattern::Single>(pattern.pattern);
             const auto type = validateType(typ);
@@ -1416,47 +1415,43 @@ public:
         if (not var)
             util::error("Name `" + type_name.name + "` in match expression does not name a constructor"); // shouldn't happen now that we have lexical analysis
 
-        const Value type_value = var->first;
-        // if (not std::holds_alternative<ClassValue>(type_value))
+        const value::Value& type_value = var->first;
         if (not std::holds_alternative<type::TypePtr>(type_value) and not type::isClass(get<type::TypePtr>(type_value)))
             util::error("Name `" + type_name.name + "` in match expression does not name a constructor");
 
 
-        // const auto& cls = get<ClassValue>(type_value);
-        // const type::TypePtr type = std::make_shared<type::LiteralType>(std::make_shared<ClassValue>(cls));
         const auto& type = get<type::TypePtr>(type_value);
-        // if (not (*type == *typeOf(value))) return false;
         if (not (*type == *typeOf(value))) return false;
 
         if (
             type::isClass(type) and
             patterns.size() > dynamic_cast<type::LiteralType*>(type.get())->cls->blueprint->fields.size()
         )
-            util::error("Number of singles is greater than number of fields in class " + stringify(type));
+            util::error("Number of singles is greater than number of fields in class " + value::stringify(type));
 
 
-        const auto& obj = get<Object>(value);
+        const auto& obj = get<value::Object>(value);
         if (obj.second->members.size() != obj.second->members.size()) util::error("idek what error message this should be..!");
 
-        for (const auto& [member, pat] : std::views::zip(get<Object>(value).second->members, patterns)) {
-            if (not match(*get<ValuePtr>(member), *pat)) return false;
+        for (const auto& [member, pat] : std::views::zip(get<value::Object>(value).second->members, patterns)) {
+            if (not match(*get<value::ValuePtr>(member), *pat)) return false;
         }
 
         return true;
     }
 
 
-    Value operator()(const expr::Match *m) {
+    value::Value operator()(const expr::Match *m) {
         if (const auto& var = getVar(m->ID); var) return var->first;
 
-        const Value value = std::visit(*this, m->expr->variant());
+        const value::Value& value = std::visit(*this, m->expr->variant());
 
         for (const auto& kase : m->cases) {
             ScopeGuard sg{this};
             if (match(value, *kase.pattern)) {
                 bool guard = true;
                 if (kase.guard) {
-                    const Value cond = std::visit(*this, kase.guard->variant());
+                    const value::Value& cond = std::visit(*this, kase.guard->variant());
 
                     if (not std::holds_alternative<bool>(cond)) {
                         std::println(std::cerr, "In guard: {}", kase.guard->stringify());
@@ -1475,7 +1470,7 @@ public:
     }
 
 
-    Value operator()(const expr::Syntax *syn) {
+    value::Value operator()(const expr::Syntax *syn) {
         if (const auto& var = getVar(syn->ID); var) return var->first;
 
         // return std::visit(*this, syn->expr->variant());
@@ -1483,24 +1478,24 @@ public:
     }
 
 
-    Value operator()(const expr::Type* type) {
+    value::Value operator()(const expr::Type* type) {
         if (const auto& var = getVar(type->ID); var) return var->first;
 
         return validateType(type->type);
     };
 
 
-    Value operator()(const expr::Loop *loop) {
+    value::Value operator()(const expr::Loop *loop) {
         if (const auto& var = getVar(loop->ID); var) return var->first;
 
 
         enum class Type { NONE = 0, INT, BOOL, LIST, PACK, OBJECT };
-        const auto classify = [](const Value& v) {
-            if (std::holds_alternative<BigInt   >(v)) return Type::INT ;
-            if (std::holds_alternative<bool     >(v)) return Type::BOOL;
-            if (std::holds_alternative<ListValue>(v)) return Type::LIST;
-            if (std::holds_alternative<PackList >(v)) return Type::PACK;
-            if (std::holds_alternative<Object   >(v)) return Type::OBJECT;
+        const auto classify = [](const value::Value& v) {
+            if (std::holds_alternative<BigInt          >(v)) return Type::INT ;
+            if (std::holds_alternative<bool            >(v)) return Type::BOOL;
+            if (std::holds_alternative<value::ListValue>(v)) return Type::LIST;
+            if (std::holds_alternative<value::PackList >(v)) return Type::PACK;
+            if (std::holds_alternative<value::Object   >(v)) return Type::OBJECT;
 
             return Type::NONE;
         };
@@ -1510,9 +1505,9 @@ public:
         // push
         const auto current_counter = loop_counter;
 
-        Value ret;
+        value::Value ret;
         if (loop->kind) {
-            const Value kind = std::visit(*this, loop->kind->variant());
+            const value::Value& kind = std::visit(*this, loop->kind->variant());
 
             switch (classify(kind)) {
                 // for loop
@@ -1584,7 +1579,7 @@ public:
                 } break;
 
                 case Type::LIST: {
-                    const auto& list = get<ListValue>(kind);
+                    const auto& list = get<value::ListValue>(kind);
                     if (list.elts->values.empty()) {
                         if (not loop->els) util::error("Loop which didn't run doesn't have else branch: " + loop->stringify());
                         return std::visit(*this, loop->els->variant());
@@ -1615,7 +1610,7 @@ public:
                 } break;
 
                 case Type::PACK: {
-                    const auto& pack = get<PackList>(kind);
+                    const auto& pack = get<value::PackList>(kind);
                     if (pack->values.empty()) {
                         if (not loop->els) util::error("Loop which didn't run doesn't have else branch: " + loop->stringify());
                         return std::visit(*this, loop->els->variant());
@@ -1646,7 +1641,7 @@ public:
                 } break;
 
                 case Type::OBJECT: {
-                    const auto& obj = get<Object>(kind);
+                    const auto& obj = get<value::Object>(kind);
 
                     // const auto& next_it    = std::ranges::find_if(obj.second->members, [](const auto& p) { return p.first.name == "next";    });
                     // const auto& hasNext_it = std::ranges::find_if(obj.second->members, [](const auto& p) { return p.first.name == "hasNext"; });
@@ -1760,7 +1755,7 @@ public:
     }
 
 
-    Value operator()(const expr::Break *brake) {
+    value::Value operator()(const expr::Break *brake) {
         broken = true;
         if (brake->expr) return std::visit(*this, brake->expr->variant());
         // if (brake->expr) return eval(brake->expr);
@@ -1768,7 +1763,7 @@ public:
         return loop_counter;
     }
 
-    Value operator()(const expr::Continue *cont) {
+    value::Value operator()(const expr::Continue *cont) {
         continued = true;
         if (cont->expr) return std::visit(*this, cont->expr->variant());
 
@@ -1777,7 +1772,7 @@ public:
 
 
     //* only added to differentiate between expressions such as: 1 + 2 and (1 + 2)
-    Value operator()(const expr::Grouping *g) {
+    value::Value operator()(const expr::Grouping *g) {
         if (const auto& var = getVar(g->ID); var) return var->first;
 
         return std::visit(*this, g->expr->variant());
@@ -1836,7 +1831,7 @@ public:
 
 
 
-    const Value& checkReturnType(const Value& ret, const type::TypePtr return_type, const std::source_location& location = std::source_location::current()) {
+    const value::Value& checkReturnType(const value::Value& ret, const type::TypePtr return_type, const std::source_location& location = std::source_location::current()) {
 
         typeCheck(ret, return_type,
             "Type mis-match! Function return type expected: " +
@@ -1855,13 +1850,13 @@ public:
         return ret;
     }
 
-    Value operator()(const expr::UnaryOp *up) {
+    value::Value operator()(const expr::UnaryOp *up) {
         if (const auto& var = getVar(up->ID); var) return var->first;
 
 
         const auto& op = findPrefixOp(up->op);
         expr::Closure* func;
-        Environment args_env;
+        value::Environment args_env;
 
         if (op->funcs.size() == 1) {
             func = dynamic_cast<expr::Closure*>(op->funcs[0].get());
@@ -1878,7 +1873,7 @@ public:
 
             // addVar(func->params.front(), arg);
             //* maybe should use Syntax() instead of Any();
-            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<Value>(arg), func->type.params[0]}; //? fixed
+            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<value::Value>(arg), func->type.params[0]}; //? fixed
 
         }
         else { // do selection based on type
@@ -1888,13 +1883,13 @@ public:
 
             func = resolveOverloadSet(op->OpName(), op->funcs, {arg});
 
-            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<Value>(arg), func->type.params[0]}; //? fixed
+            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<value::Value>(arg), func->type.params[0]}; //? fixed
         }
 
 
         ScopeGuard sg{this, args_env};
 
-        Value ret;
+        value::Value ret;
         if (not dynamic_cast<expr::Block*>(func->body.get())) {
             ret = std::visit(*this, func->body->variant());
 
@@ -1914,13 +1909,13 @@ public:
     }
 
 
-    Value operator()(const expr::BinOp *bp) {
+    value::Value operator()(const expr::BinOp *bp) {
         if (const auto& var = getVar(bp->ID); var) return var->first;
 
 
         const auto& op = findOp(bp->op);
         expr::Closure* func;
-        Environment args_env;
+        value::Environment args_env;
 
         if (op->funcs.size() == 1) {
             func = dynamic_cast<expr::Closure*>(op->funcs[0].get());
@@ -1937,7 +1932,7 @@ public:
                 ", got: " + stringify(arg1) + " which is " + typeOf(arg1)->text()
             );
 
-            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<Value>(arg1), func->type.params[0]};
+            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<value::Value>(arg1), func->type.params[0]};
 
 
             // RHS
@@ -1952,7 +1947,7 @@ public:
                 ", got: " + stringify(arg2) + " which is " + typeOf(arg2)->text()
             );
 
-            args_env[func->params[1].ID] = {{func->params[1].name}, std::make_shared<Value>(arg2), func->type.params[1]};
+            args_env[func->params[1].ID] = {{func->params[1].name}, std::make_shared<value::Value>(arg2), func->type.params[1]};
         }
         else {
             // checkNoSyntaxType(op->funcs);
@@ -1962,13 +1957,13 @@ public:
 
             func = resolveOverloadSet(op->OpName(), op->funcs, {arg1, arg2});
 
-            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<Value>(arg1), func->type.params[0]};
-            args_env[func->params[1].ID] = {{func->params[1].name}, std::make_shared<Value>(arg2), func->type.params[1]};
+            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<value::Value>(arg1), func->type.params[0]};
+            args_env[func->params[1].ID] = {{func->params[1].name}, std::make_shared<value::Value>(arg2), func->type.params[1]};
         }
 
 
         // !for binary fold
-        // Value ret;
+        // value::Value ret;
         // if (not dynamic_cast<expr::Block*>(func->body.get())) {
         //     ret = std::visit(*this, func->body->variant());
 
@@ -1986,7 +1981,7 @@ public:
 
         ScopeGuard sg{this, args_env};
 
-        Value ret;
+        value::Value ret;
         if (not dynamic_cast<expr::Block*>(func->body.get())) {
             ret = std::visit(*this, func->body->variant());
 
@@ -2006,13 +2001,13 @@ public:
     }
 
 
-    Value operator()(const expr::PostOp *pp) {
+    value::Value operator()(const expr::PostOp *pp) {
         if (const auto& var = getVar(pp->ID); var) return var->first;
 
 
         const auto& op = findOp(pp->op);
         expr::Closure* func;
-        Environment args_env;
+        value::Environment args_env;
 
         if (op->funcs.size() == 1) {
             func = dynamic_cast<expr::Closure*>(op->funcs[0].get());
@@ -2028,7 +2023,7 @@ public:
                 ", got: " + stringify(arg) + " which is " + typeOf(arg)->text()
             );
 
-            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<Value>(arg), func->type.params[0]}; //? fixed
+            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<value::Value>(arg), func->type.params[0]}; //? fixed
         }
         else {
             // checkNoSyntaxType(op->funcs);
@@ -2037,12 +2032,12 @@ public:
 
             func = resolveOverloadSet(op->OpName(), op->funcs, {arg});
 
-            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<Value>(arg), func->type.params[0]};
+            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<value::Value>(arg), func->type.params[0]};
         }
 
         ScopeGuard sg{this, args_env};
 
-        Value ret;
+        value::Value ret;
         if (not dynamic_cast<expr::Block*>(func->body.get())) {
             ret = std::visit(*this, func->body->variant());
 
@@ -2063,12 +2058,12 @@ public:
 
 
 
-    Value operator()(const expr::CircumOp *cp) {
+    value::Value operator()(const expr::CircumOp *cp) {
         if (const auto& var = getVar(cp->ID); var) return var->first;
 
         const auto& op = findPrefixOp(cp->op1);
         expr::Closure* func;
-        Environment args_env;
+        value::Environment args_env;
 
         if (op->funcs.size() == 1) {
             func = dynamic_cast<expr::Closure*>(op->funcs[0].get());
@@ -2084,7 +2079,7 @@ public:
                 ", got: " + stringify(arg) + " which is " + typeOf(arg)->text()
             );
 
-            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<Value>(arg), func->type.params[0]}; //? fixed
+            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<value::Value>(arg), func->type.params[0]}; //? fixed
         }
         else {
             // checkNoSyntaxType(op->funcs);
@@ -2093,13 +2088,13 @@ public:
 
             func = resolveOverloadSet(op->OpName(), op->funcs, {arg});
 
-            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<Value>(arg), func->type.params[0]};
+            args_env[func->params[0].ID] = {{func->params[0].name}, std::make_shared<value::Value>(arg), func->type.params[0]};
         }
 
 
         ScopeGuard sg{this, args_env};
 
-        Value ret;
+        value::Value ret;
         if (not dynamic_cast<expr::Block*>(func->body.get())) {
             ret = std::visit(*this, func->body->variant());
 
@@ -2118,7 +2113,7 @@ public:
         // return checkReturnType(std::visit(*this, func->body->variant()), func->type.ret);
     };
 
-    Value operator()(const expr::OpCall *oc) {
+    value::Value operator()(const expr::OpCall *oc) {
         if (const auto& var = getVar(oc->ID); var) return var->first;
 
 
@@ -2129,7 +2124,7 @@ public:
         }();
 
         expr::Closure* func;
-        Environment args_env;
+        value::Environment args_env;
 
         if (op->funcs.size() == 1) {
 
@@ -2155,13 +2150,13 @@ public:
 
 
                 // addVar(func->params[0], std::visit(*this, co->expr->variant()));
-                args_env[param.ID] = {{param.name}, std::make_shared<Value>(arg), param_type}; //? fix Any Type!!
+                args_env[param.ID] = {{param.name}, std::make_shared<value::Value>(arg), param_type}; //? fix Any Type!!
             }
         }
         else {
             // checkNoSyntaxType(op->funcs);
 
-            std::vector<Value> args;
+            std::vector<value::Value> args;
             std::vector<type::TypePtr> types;
             for (const auto& expr : oc->exprs) {
                 args .push_back(std::visit(*this, expr->variant()));
@@ -2172,13 +2167,13 @@ public:
             func = resolveOverloadSet(op->OpName(), op->funcs, args);
 
             for (const auto& [param, arg, type] : std::views::zip(func->params, args, func->type.params))
-                args_env[param.ID] = {{param.name}, std::make_shared<Value>(arg), type};
+                args_env[param.ID] = {{param.name}, std::make_shared<value::Value>(arg), type};
         }
 
 
         ScopeGuard sg{this, args_env};
 
-        Value ret;
+        value::Value ret;
         if (not dynamic_cast<expr::Block*>(func->body.get())) {
             ret = std::visit(*this, func->body->variant());
 
@@ -2208,7 +2203,7 @@ public:
         return {};
     };
 
-    Value operator()(const expr::Call *call) {
+    value::Value operator()(const expr::Call *call) {
         if (const auto& var = getVar(call->ID); var) return var->first;
 
         // const auto args = std::move(call)->args;
@@ -2228,15 +2223,15 @@ public:
         // so now that I added `Syntax` literals..
         // this problem is mostly solved?
         // but I still don't know if I wanna add implicit syntax or not
-        std::vector<std::pair<size_t, std::vector<Value>>> expand_at;
+        std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at;
         for (size_t i{}; i < args.size(); ++i) {
             if (const auto expand = dynamic_cast<const expr::Expansion*>(args[i].get())) {
                 const auto pack = std::visit(*this, expand->pack->variant());
 
-                if (not std::holds_alternative<PackList>(pack))
+                if (not std::holds_alternative<value::PackList>(pack))
                     util::error("Expansion applied on a non-pack variable: " + args[i]->stringify());
 
-                expand_at.push_back({i, get<PackList>(pack)->values});
+                expand_at.push_back({i, get<value::PackList>(pack)->values});
             }
         }
 
@@ -2288,11 +2283,11 @@ public:
     void variadicCall(
         const expr::Closure& func,
         std::vector<std::pair<expr::StringID, type::TypePtr>>& pos_params,
-        const std::vector<std::pair<size_t, std::vector<Value>>>& expand_at,
+        const std::vector<std::pair<size_t, std::vector<value::Value>>>& expand_at,
         const std::vector<pie::expr::ExprPtr>& args,
         const size_t args_size,
         ScopeGuard& sg,
-        Environment& args_env
+        value::Environment& args_env
     ) {
         const auto it = std::ranges::find_if(pos_params, [] (const auto& e) { return type::isVariadic(e.second); });
         const size_t variadic_index = std::distance(pos_params.begin(), it);
@@ -2327,7 +2322,7 @@ public:
         };
 
 
-        auto pack = makePack();
+        auto pack = value::makePack();
         for (
             size_t arg_index{}, param_index{}, pack_index{}, curr_expansion{};
             arg_index < args.size(); // can't be args_size since arg_index is only used to index into args
@@ -2336,7 +2331,7 @@ public:
             const auto& [name, id] = sid;
             type = type->clone();
 
-            Value value;
+            value::Value value;
 
             if (param_index == variadic_index){
                 if (findType(param_index, type)) {
@@ -2386,8 +2381,8 @@ public:
 
                 ++param_index;
 
-                // sg.addEnv({{name, {std::make_shared<Value>(value), type}}});
-                args_env[id] = {{name}, std::make_shared<Value>(std::move(pack)), std::move(type)};
+                // sg.addEnv({{name, {std::make_shared<value::Value>(value), type}}});
+                args_env[id] = {{name}, std::make_shared<value::Value>(std::move(pack)), std::move(type)};
             }
             else {
                 if (findType(param_index, type)) {
@@ -2430,8 +2425,8 @@ public:
                 }
 
                 ++param_index;
-                // sg.addEnv({{name, {std::make_shared<Value>(value), type}}});
-                args_env[id] = {{name}, std::make_shared<Value>(std::move(value)), std::move(type)};
+                // sg.addEnv({{name, {std::make_shared<value::Value>(value), type}}});
+                args_env[id] = {{name}, std::make_shared<value::Value>(std::move(value)), std::move(type)};
             }
         }
 
@@ -2441,14 +2436,14 @@ public:
                 pos_params[variadic_index].first.ID,
                 {
                     {pos_params[variadic_index].first.name},
-                    std::make_shared<Value>(makePack()),
+                    std::make_shared<value::Value>(value::makePack()),
                     pos_params[variadic_index].second
                 }
             }});
 
             args_env[pos_params[variadic_index].first.ID] = {
                 {pos_params[variadic_index].first.name},
-                std::make_shared<Value>(makePack()),
+                std::make_shared<value::Value>(value::makePack()),
                 std::move(pos_params)[variadic_index].second
             };
         }
@@ -2459,11 +2454,11 @@ public:
     void regularCall(
         const expr::Closure& func,
         std::vector<std::pair<expr::StringID, type::TypePtr>>& pos_params,
-        std::vector<std::pair<size_t, std::vector<Value>>>& expand_at,
+        std::vector<std::pair<size_t, std::vector<value::Value>>>& expand_at,
         const std::vector<pie::expr::ExprPtr>& args,
         const size_t args_size,
         // ScopeGuard& sg,
-        Environment& args_env
+        value::Environment& args_env
     ) {
 
         const auto findType = [&func] (const size_t p, const type::TypePtr& type) {
@@ -2508,8 +2503,8 @@ public:
                         captureEnvForPassedClosure(get<expr::Closure>(val));
 
 
-                    // sg.addEnv({{name, {std::make_shared<Value>(val), type}}});
-                    args_env[id] = {{name}, std::make_shared<Value>(std::move(val)), std::move(type)};
+                    // sg.addEnv({{name, {std::make_shared<value::Value>(val), type}}});
+                    args_env[id] = {{name}, std::make_shared<value::Value>(std::move(val)), std::move(type)};
                 }
                 --p; // the parameter index will have gone one too far. bring it back
             }
@@ -2524,7 +2519,7 @@ public:
 
                 const auto& expr = args[i];
 
-                Value value = std::visit(*this, expr->variant());
+                value::Value value = std::visit(*this, expr->variant());
 
                 value = typeCheck(value, type,
                     "Type mis-match! Parameter '" + name + "' expected type: " + type->text() + ", got: " + typeOf(value)->text()
@@ -2535,18 +2530,18 @@ public:
                     captureEnvForPassedClosure(get<expr::Closure>(value));
 
 
-                // sg.addEnv({{name, {std::make_shared<Value>(value), type}}});
-                args_env[id] = {{name}, std::make_shared<Value>(std::move(value)), std::move(type)};
+                // sg.addEnv({{name, {std::make_shared<value::Value>(value), type}}});
+                args_env[id] = {{name}, std::make_shared<value::Value>(std::move(value)), std::move(type)};
             }
         }
     }
 
 
-    Value closureCall(
+    value::Value closureCall(
         const expr::Call *call,
         expr::Closure func,
         const std::vector<pie::expr::ExprPtr>& args,
-        std::vector<std::pair<size_t, std::vector<Value>>> expand_at
+        std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at
     ) {
 
         // // types are validate in operator()(const expr::Closure* c) for now
@@ -2581,8 +2576,8 @@ public:
 
         //* full call. Don't curry!
         // ScopeGuard sg{this, EnvTag::FUNC, func.args_env, func.env};
-        ScopeGuard sg{this, EnvTag::FUNC, func.envs.env.env};
-        Environment args_env; // in case the lambda needs to capture 
+        ScopeGuard sg{this, value::EnvTag::FUNC, func.envs.env.env};
+        value::Environment args_env; // in case the lambda needs to capture 
 
 
         // !
@@ -2600,7 +2595,7 @@ public:
 
             if (not type) util::error(); // should never happen anyway
 
-            Value value = std::visit(*this, expr->variant());
+            value::Value value = std::visit(*this, expr->variant());
 
             value = typeCheck(value, type,
                 "Type mis-match! Parameter '" + name + "' expected type: " + type->text() + ", got: " + typeOf(value)->text()
@@ -2609,7 +2604,7 @@ public:
             // if (std::holds_alternative<expr::Closure>(value))
             //     captureEnvForPassedClosure(get<expr::Closure>(value));
 
-            args_env[id] = {{name}, std::make_shared<Value>(std::move(value)), std::move(type)};
+            args_env[id] = {{name}, std::make_shared<value::Value>(std::move(value)), std::move(type)};
         }
 
 
@@ -2667,7 +2662,7 @@ public:
         sg.addOps(func.envs.env.op_env);
         sg.addPrefixOps(func.envs.env.prefix_op_env);
 
-        Value ret;
+        value::Value ret;
         if (not dynamic_cast<const expr::Block*>(func.body.get())) {
             ret = std::visit(*this, func.body->variant());
 
@@ -2694,7 +2689,7 @@ public:
         size_t found{};
 
         for (size_t i{}; i < env.size(); ++i)
-            if (env[i].tag == EnvTag::FUNC) found = i;
+            if (env[i].tag == value::EnvTag::FUNC) found = i;
 
         for (; found < env.size(); ++found) {
             c.returnCapture(env[found].env);
@@ -2710,7 +2705,7 @@ public:
         size_t found2 = 1;
 
         for (size_t i = 1; i < env.size(); ++i)
-            if (env[i].tag == EnvTag::FUNC) {
+            if (env[i].tag == value::EnvTag::FUNC) {
                 found1 = found2;
                 found2 = i;
             }
@@ -2722,17 +2717,17 @@ public:
     }
 
 
-    Value partialApplication(
+    value::Value partialApplication(
         const expr::Call *call,
         const expr::Closure& func,
         const size_t args_size,
-        std::vector<std::pair<size_t, std::vector<Value>>> expand_at,
+        std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at,
         std::vector<expr::ExprPtr> args, 
         const bool is_variadic
     ) {
         // ScopeGuard sg{this, EnvTag::FUNC, func.args_env, func.env};
-        ScopeGuard sg{this, EnvTag::FUNC, func.envs.env.env};
-        Environment args_env = func.envs.env.env;
+        ScopeGuard sg{this, value::EnvTag::FUNC, func.envs.env.env};
+        value::Environment args_env = func.envs.env.env;
 
         for (const auto& [name, expr] : call->named_args) {
             type::TypePtr type;
@@ -2747,7 +2742,7 @@ public:
 
             if (not type) util::error(); // should never happen anyway
 
-            Value value = std::visit(*this, expr->variant());
+            value::Value value = std::visit(*this, expr->variant());
 
             value = typeCheck(value, type,
                 "Type mis-match! Parameter '" + name + "' expected type: " + type->text() + ", got: " + typeOf(value)->text()
@@ -2756,8 +2751,8 @@ public:
             // if (std::holds_alternative<expr::Closure>(value))
             //     captureEnvForPassedClosure(get<expr::Closure>(value));
 
-            // sg.addEnv({{name, {std::make_shared<Value>(value), type}}});
-            args_env[id] = {{name}, std::make_shared<Value>(std::move(value)), std::move(type)};
+            // sg.addEnv({{name, {std::make_shared<value::Value>(value), type}}});
+            args_env[id] = {{name}, std::make_shared<value::Value>(std::move(value)), std::move(type)};
         }
 
 
@@ -2805,14 +2800,14 @@ public:
                     pos_params[variadic_index].first.ID, 
                     {
                         {pos_params[variadic_index].first.name},
-                        std::make_shared<Value>(makePack()),
+                        std::make_shared<value::Value>(value::makePack()),
                         pos_params[variadic_index].second
                     }
                 }});
 
                 args_env[pos_params[variadic_index].first.ID] = {
                     {pos_params[variadic_index].first.name},
-                    std::make_shared<Value>(makePack()),
+                    std::make_shared<value::Value>(value::makePack()),
                     std::move(pos_params[variadic_index]).second
                 };
 
@@ -2841,8 +2836,8 @@ public:
                             if (std::holds_alternative<expr::Closure>(val))
                                 captureEnvForPassedClosure(get<expr::Closure>(val));
 
-                            // sg.addEnv({{name, {std::make_shared<Value>(val), type}}});
-                            args_env[id] = {{name}, std::make_shared<Value>(std::move(val)), std::move(type)};
+                            // sg.addEnv({{name, {std::make_shared<value::Value>(val), type}}});
+                            args_env[id] = {{name}, std::make_shared<value::Value>(std::move(val)), std::move(type)};
                         }
                         --p;
                     }
@@ -2852,7 +2847,7 @@ public:
                         const auto& expr = args[i];
                         // if (findType(p, type)) type = validateType(std::move(type));
 
-                        Value value;
+                        value::Value value;
                         value = std::visit(*this, expr->variant());
 
                         value = typeCheck(value, type,
@@ -2861,8 +2856,8 @@ public:
 
                         // if (std::holds_alternative<expr::Closure>(value))
                         //     captureEnvForPassedClosure(get<expr::Closure>(value));
-                        // sg.addEnv({{name, {std::make_shared<Value>(value), type}}});
-                        args_env[id] = {{name}, std::make_shared<Value>(std::move(value)), std::move(type)};
+                        // sg.addEnv({{name, {std::make_shared<value::Value>(value), type}}});
+                        args_env[id] = {{name}, std::make_shared<value::Value>(std::move(value)), std::move(type)};
                     }
                 }
             }
@@ -2909,8 +2904,8 @@ public:
                         if (std::holds_alternative<expr::Closure>(val))
                             captureEnvForPassedClosure(get<expr::Closure>(val));
 
-                        // sg.addEnv({{name, {std::make_shared<Value>(val), type}}});
-                        args_env[id] = {{name}, std::make_shared<Value>(std::move(val)), std::move(type)};
+                        // sg.addEnv({{name, {std::make_shared<value::Value>(val), type}}});
+                        args_env[id] = {{name}, std::make_shared<value::Value>(std::move(val)), std::move(type)};
                     }
                     --p;
                 }
@@ -2925,7 +2920,7 @@ public:
 
                     const auto& expr = args[i];
 
-                    Value value = std::visit(*this, expr->variant());
+                    value::Value value = std::visit(*this, expr->variant());
 
                     value = typeCheck(value, type,
                         "Type mis-match! Parameter '" + name + "' expected type: " + type->text() + ", got: " + typeOf(value)->text()
@@ -2934,8 +2929,8 @@ public:
                     // if (std::holds_alternative<expr::Closure>(value))
                     //     captureEnvForPassedClosure(get<expr::Closure>(value));
 
-                    // sg.addEnv({{name, {std::make_shared<Value>(value), type}}});
-                    args_env[id] = {{name}, std::make_shared<Value>(std::move(value)), std::move(type)};
+                    // sg.addEnv({{name, {std::make_shared<value::Value>(value), type}}});
+                    args_env[id] = {{name}, std::make_shared<value::Value>(std::move(value)), std::move(type)};
                 }
             }
         }
@@ -2947,7 +2942,7 @@ public:
         return closure;
     }
 
-    Value handleNonClasses(const expr::Call *call, const type::TypePtr type) {
+    value::Value handleNonClasses(const expr::Call *call, const type::TypePtr type) {
         if (not call->args.empty()) util::error("Can't pass arguments to non-class types: " + call->stringify());
         if (type::isFunction(type)) util::error("Can't default-construct a function type: " + call->stringify());
 
@@ -2962,9 +2957,9 @@ public:
             util::error("Can't default construct type '" + type_name + "': " + call->stringify());
         }
 
-        if (type::isVariadic(type)) return makePack();
-        if (type::isList    (type)) return makeList();
-        if (type::isMap     (type)) return makeMap ();
+        if (type::isVariadic(type)) return value::makePack();
+        if (type::isList    (type)) return value::makeList();
+        if (type::isMap     (type)) return value::makeMap ();
 
 
         if (auto onion = type::isUnion(type)) {
@@ -2976,14 +2971,12 @@ public:
         util::error();
     }
 
-    // std::vector<std::tuple<expr::Name, type::TypePtr, ValuePtr>>
+
     void initializeRestOfMembers(
         value::Object& obj,
         const std::vector<std::tuple<pie::expr::Name, pie::type::TypePtr, pie::expr::ExprPtr>>& fields,
         const size_t starting_index
     ) {
-        // std::vector<std::tuple<expr::Name, type::TypePtr, ValuePtr>> members;
-
         ScopeGuard sg{this};
         size_t index{};
         for (; index < starting_index; ++index) {
@@ -2997,7 +2990,7 @@ public:
 
             type::TypePtr type = typ;
 
-            Value v;
+            value::Value v;
 
 
             type = validateType(std::move(type));
@@ -3012,7 +3005,7 @@ public:
 
 
             // maybe not allowing the usage of previous members in the initializers of other members is the way? not sure
-            const auto value = std::make_shared<Value>(v);
+            const auto value = std::make_shared<value::Value>(v);
             addVar(name.name, name.ID, value, type);
             obj.second->members.push_back({name, type, value});
         }
@@ -3021,7 +3014,7 @@ public:
     }
 
 
-    Value constructorCall(const expr::Call *call, Value var) {
+    value::Value constructorCall(const expr::Call *call, value::Value var) {
         auto type = validateType(std::get<type::TypePtr>(var));
 
 
@@ -3030,10 +3023,10 @@ public:
         const auto *cls = dynamic_cast<const type::LiteralType*>(type.get())->cls.get();
 
         if (call->args.size() > cls->blueprint->fields.size())
-            util::error("Too many arguments passed to constructor of class: " + stringify(type) + "\nin constructor call:\n" + call->stringify());
+            util::error("Too many arguments passed to constructor of class: " + value::stringify(type) + "\nin constructor call:\n" + call->stringify());
 
 
-        value::Object obj{type, std::make_shared<Members>(
+        value::Object obj{type, std::make_shared<value::Members>(
             std::vector<std::tuple<expr::Name, type::TypePtr, value::ValuePtr>>() // reserve fields.size() elements
         )};
 
@@ -3044,7 +3037,7 @@ public:
             const auto& [name, type, _] = cls->blueprint->fields[i];
 
             typeCheck(v, type,
-                "Type mis-match in constructor of:\n" + stringify(type) + "\nMember `" +
+                "Type mis-match in constructor of:\n" + value::stringify(type) + "\nMember `" +
                 name.stringify() + "` expected: " + type->text() + "\n"
                 "but got: " + call->args[i]->stringify() + " which is " + typeOf(v)->text()
             );
@@ -3060,7 +3053,7 @@ public:
     }
 
 
-    Value operator()(const expr::Closure *c) {
+    value::Value operator()(const expr::Closure *c) {
         if (const auto& var = getVar(c->ID); var) return var->first;
 
         expr::Closure closure = *c; // copy to use for fix the types
@@ -3107,7 +3100,7 @@ public:
     }
 
 
-    Value operator()(const expr::Block *block) {
+    value::Value operator()(const expr::Block *block) {
         if (const auto& var = getVar(block->ID); var) return var->first;
 
 
@@ -3116,7 +3109,7 @@ public:
 
         bool last_expr_is_block{};
 
-        Value ret;
+        value::Value ret;
         for (const auto& line : block->lines) {
             last_expr_is_block = dynamic_cast<const expr::Block*>(line.get());
 
@@ -3135,7 +3128,7 @@ public:
     }
 
 
-    Value operator()(const expr::Fix *fix) {
+    value::Value operator()(const expr::Fix *fix) {
         if (const auto& var = getVar(fix->ID); var) return var->first;
         // return std::visit(*this, fix->func->variant());
 
@@ -3258,9 +3251,9 @@ public:
 
 
     // the gate into the META operators!
-    Value evaluateBuiltin(
+    value::Value evaluateBuiltin(
         const std::vector<expr::ExprPtr> args,
-        const std::vector<std::pair<size_t, std::vector<Value>>> expand_at,
+        const std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at,
         const std::unordered_map<std::string, expr::ExprPtr>& named_args,
         std::string name
     ) {
@@ -3430,12 +3423,12 @@ public:
             MapEntry<
                 S<"pop">,
                 Func<"pop",
-                    decltype([](const auto& cont, const auto&) -> Value {
+                    decltype([](const auto& cont, const auto&) -> value::Value {
                         const auto back = cont.elts->values.back();
                         cont.elts->values.pop_back();
                         return back;
                     }),
-                    TypeList<ListValue>
+                    TypeList<value::ListValue>
                 >
             >{},
 
@@ -3444,17 +3437,17 @@ public:
             MapEntry<
                 S<"get">,
                 Func<"get",
-                    decltype([](const auto& a, const auto& ind, const auto&) -> Value {
+                    decltype([](const auto& a, const auto& ind, const auto&) -> value::Value {
                         using T = std::remove_cvref_t<decltype(a)>;
 
-                        if constexpr (std::is_same_v<T, ListValue>) {
+                        if constexpr (std::is_same_v<T, value::ListValue>) {
                             if (ind < 0 or size_t(ind) >= a.elts->values.size())
                                 util::error("Accessing list '" + stringify(a) + "' at index '" + std::to_string(ind) + "' which is out of bounds!");
 
                             return a.elts->values[ind]; 
                         }
 
-                        else if constexpr (std::is_same_v<T, MapValue>) {
+                        else if constexpr (std::is_same_v<T, value::MapValue>) {
                             auto key = stringify(ind);
                             if (not a.items->map.contains(key))
                                 util::error("Accessing Map '" + stringify(a) + "' at key '" + key + "' which doesn't exist!");
@@ -3468,8 +3461,8 @@ public:
                             return std::string{a[ind]};
                         }
                     }),
-                    TypeList<ListValue, BigInt>,
-                    TypeList<MapValue, Any>,
+                    TypeList<value::ListValue, BigInt>,
+                    TypeList<value::MapValue, Any>,
                     TypeList<std::string, BigInt>
                 >
             >{},
@@ -3477,23 +3470,23 @@ public:
             MapEntry<
                 S<"set">,
                 Func<"set",
-                    decltype([](const auto& cont, const auto& at, const auto& elt, const auto&) -> Value {
+                    decltype([](const auto& cont, const auto& at, const auto& elt, const auto&) -> value::Value {
                         using T = std::remove_cvref_t<decltype(cont)>;
 
-                        if constexpr (std::is_same_v<T, ListValue>) {
+                        if constexpr (std::is_same_v<T, value::ListValue>) {
                             if (at < 0 or size_t(at) >= cont.elts->values.size())
                                 util::error("Accessing list '" + stringify(cont) + "' at index '" + std::to_string(at) + "' which is out of bounds!");
 
                             return cont.elts->values[at] = elt;
                         }
 
-                        else if constexpr (std::is_same_v<T, MapValue>) {
+                        else if constexpr (std::is_same_v<T, value::MapValue>) {
                             auto key = stringify(at);
                             return cont.items->map[key] = elt;
                         }
                     }),
-                    TypeList<ListValue, BigInt, Any>,
-                    TypeList<MapValue, Any, Any>
+                    TypeList<value::ListValue, BigInt, Any>,
+                    TypeList<value::MapValue, Any, Any>
                     // TypeList<std::string, BigInt>
                 >
             >{},
@@ -3501,11 +3494,11 @@ public:
             MapEntry<
                 S<"push">,
                 Func<"push",
-                    decltype([](const auto& cont, const auto& elt, const auto&) -> Value {
+                    decltype([](const auto& cont, const auto& elt, const auto&) -> value::Value {
                         cont.elts->values.push_back(elt);
                         return elt;
                     }),
-                    TypeList<ListValue, Any>
+                    TypeList<value::ListValue, Any>
                 >
             >{},
 
@@ -3709,7 +3702,7 @@ public:
 
             std::string s;
             for(const auto& arg : args) {
-                const Value& v = std::visit(*this, arg->variant());
+                const value::Value& v = std::visit(*this, arg->variant());
                 if (not std::holds_alternative<std::string>(v)) util::error("'concat' only accepts strings as arguments: " + stringify(v));
 
                 s += get<std::string>(v);
@@ -3883,9 +3876,9 @@ public:
     }
 
 
-    Value builtinPrint(
+    value::Value builtinPrint(
         const std::vector<expr::ExprPtr>& args,
-        const std::vector<std::pair<size_t, std::vector<Value>>>& expand_at,
+        const std::vector<std::pair<size_t, std::vector<value::Value>>>& expand_at,
         const std::unordered_map<std::string, expr::ExprPtr>& named_args
     ) {
         if (args.empty()) util::error("'print' requires at least 1 positional argument passed!");
@@ -3898,12 +3891,12 @@ public:
                 util::error("Can only have the named argument 'end'/'sep' in call to '__builtin_print': found '" + name + "'!");
 
 
-        const Value sep = named_args.contains("sep") ? std::visit(*this, named_args.at("sep")->variant()) : " ";
+        const value::Value& sep = named_args.contains("sep") ? std::visit(*this, named_args.at("sep")->variant()) : " ";
 
         constexpr bool no_newline = false;
 
-        std::optional<Value> separator;
-        Value ret;
+        std::optional<value::Value> separator;
+        value::Value ret;
         for(size_t i{}, curr{}; auto& arg : args) {
             if (curr < expand_at.size() and i++ == expand_at[curr].first) {
                 for (const auto& e : expand_at[curr++].second) {
@@ -3933,7 +3926,7 @@ public:
 
 
 
-    void print(const Value& value, const bool new_line = true) const { std::print("{}{}", stringify(value), new_line? '\n' : '\0'); }
+    void print(const value::Value& value, const bool new_line = true) const { std::print("{}{}", stringify(value), new_line? '\n' : '\0'); }
 
 
     type::TypePtr validateType(const type::TypePtr& type) {
@@ -4032,7 +4025,7 @@ public:
     }
 
 
-    type::TypePtr typeOf(const Value& value) const {
+    type::TypePtr typeOf(const value::Value& value) const {
         if (std::holds_alternative<expr::Node > (value)) return type::builtins::Syntax();
         if (std::holds_alternative<BigInt     > (value)) return type::builtins::Int();
         if (std::holds_alternative<double     > (value)) return type::builtins::Double();
@@ -4040,8 +4033,6 @@ public:
         if (std::holds_alternative<std::string> (value)) return type::builtins::String();
 
         // Type types
-        // if (std::holds_alternative<ClassValue > (value)) return type::builtins::Type();
-        // if (std::holds_alternative<expr::Union> (value)) return type::builtins::Type();
         if (std::holds_alternative<type::TypePtr> (value)) return type::builtins::Type();
 
         if (std::holds_alternative<expr::Closure>(value)) {
@@ -4056,19 +4047,18 @@ public:
             return std::make_shared<type::FuncType>(std::move(type));
         }
 
-        if (std::holds_alternative<Object>(value)) {
-            // return std::make_shared<type::LiteralType>(std::make_shared<ClassValue>(get<Object>(value).first));
-            // ! check if type isn't a class value
+        if (std::holds_alternative<value::Object>(value)) {
+            // ! check if type isn't a class value | not sure what this comment is about
             return std::make_shared<type::LiteralType>(
-                std::make_shared<ClassValue>(
-                    *dynamic_cast<const type::LiteralType*>(get<Object>(value).first.get())->cls
+                std::make_shared<value::ClassValue>(
+                    *dynamic_cast<const type::LiteralType*>(get<value::Object>(value).first.get())->cls
                 )
             );
         }
 
-        if (std::holds_alternative<PackList>(value)) {
+        if (std::holds_alternative<value::PackList>(value)) {
             auto values = std::ranges::fold_left(
-                get<PackList>(value)->values,
+                get<value::PackList>(value)->values,
                 std::vector<type::TypePtr>{},
                 [this] (auto acc, const auto& elt) {
                     acc.push_back(typeOf(elt));
@@ -4089,9 +4079,9 @@ public:
             // return same ? std::make_shared<type::VariadicType>(values[0]) : non_typed_pack;
         }
 
-        if (std::holds_alternative<ListValue>(value)) {
+        if (std::holds_alternative<value::ListValue>(value)) {
             auto values = std::ranges::fold_left(
-                get<ListValue>(value).elts->values,
+                get<value::ListValue>(value).elts->values,
                 std::vector<type::TypePtr>{},
                 [this] (auto acc, const auto& elt) {
                     acc.push_back(typeOf(elt));
@@ -4112,9 +4102,9 @@ public:
             return type::UnionOf(std::move(values));
         }
 
-        if (std::holds_alternative<MapValue>(value)) {
+        if (std::holds_alternative<value::MapValue>(value)) {
             // auto values = std::ranges::fold_left(
-            //     get<MapValue>(value).items->map,
+            //     get<value::MapValue>(value).items->map,
             //     std::vector<std::pair<type::TypePtr, type::TypePtr>>{},
             //     [this] (auto acc, const auto& elt) {
             //         acc.push_back({typeOf(elt.first), typeOf(elt.second), });
@@ -4123,7 +4113,7 @@ public:
             //     }
             // );
             auto keys = std::ranges::fold_left(
-                get<MapValue>(value).items->map,
+                get<value::MapValue>(value).items->map,
                 std::vector<type::TypePtr>{},
                 [this] (auto acc, const auto& elt) {
                     acc.push_back({typeOf(elt.first)});
@@ -4134,7 +4124,7 @@ public:
             if (keys.empty()) return std::make_shared<type::MapType>(type::builtins::_(), type::builtins::_());
 
             auto values = std::ranges::fold_left(
-                get<MapValue>(value).items->map,
+                get<value::MapValue>(value).items->map,
                 std::vector<type::TypePtr>{},
                 [this] (auto acc, const auto& elt) {
                     acc.push_back({typeOf(elt.second)});
@@ -4172,28 +4162,28 @@ public:
     }
 
 
-    Value eval(expr::ExprPtr& expr) { return std::visit(*this, expr->variant()); }
+    value::Value eval(expr::ExprPtr& expr) { return std::visit(*this, expr->variant()); }
 
 
     struct ScopeGuard {
         Visitor* v;
 
 
-        template <std::same_as<Environment>... E>
+        template <std::same_as<value::Environment>... E>
         ScopeGuard(Visitor* t, const E&... es) noexcept : v{t} {
             v->scope();
 
             (addEnv(es), ...);
         }
 
-        template <std::same_as<Environment>... E>
+        template <std::same_as<value::Environment>... E>
         ScopeGuard(Visitor* t, value::EnvTag tag, const E&... es) noexcept : v{t} {
             v->scope(tag);
 
             (addEnv(es), ...);
         }
 
-        void addEnv(const Environment& e) {
+        void addEnv(const value::Environment& e) {
             for (const auto& [ID, var] : e) {
                 const auto& [name, value, type] = var;
                 v->addVar(name.name, ID, value, type);
@@ -4236,16 +4226,16 @@ public:
     void unscope() { env.pop_back(); }
 
 
-    Value addVar(
+    value::Value addVar(
         const std::string& name,
         const size_t ID,
-        const ValuePtr& v,
+        const value::ValuePtr& v,
         const type::TypePtr& t = type::builtins::Any(),
         NameSpace* space = nullptr
     ) {
         // if (const auto cls = type::isClass(t)) {
         //     auto obj = get<value::Object>(v);
-        //     obj.second = std::make_shared<Members>(obj.second->members);
+        //     obj.second = std::make_shared<value::Members>(obj.second->members);
 
         //     std::erase_if(
         //         obj.second->members,
@@ -4258,20 +4248,20 @@ public:
         //         }
         //     );
 
-        //     env.back().first[name] = {std::make_shared<Value>(obj), t};
+        //     env.back().first[name] = {std::make_shared<value::Value>(obj), t};
         //     return obj;
         // }
         // else {
         // }
-        // env.back().first[name] = {std::make_shared<Value>(v), t};
+        // env.back().first[name] = {std::make_shared<value::Value>(v), t};
 
         env.back().env[ID] = {{name, space}, v, t};
-        // env[ID] = {name, std::make_shared<Value>(v), t};
+        // env[ID] = {name, std::make_shared<value::Value>(v), t};
 
         return *v;
     }
 
-    // void addEnv(const Environment& e) {
+    // void addEnv(const value::Environment& e) {
     //     for (const auto& [key, var] : e) {
     //         const auto& [name, value, type] = var;
 
@@ -4292,7 +4282,7 @@ public:
         return false;
     }
 
-    std::optional<std::pair<Value, type::TypePtr>> getVar(const size_t ID) const {
+    std::optional<std::pair<value::Value, type::TypePtr>> getVar(const size_t ID) const {
         for (const auto& [e, _, __, ___] : std::views::reverse(env)) {
             if (e.contains(ID)) {
                 const auto& [named_ref, value_ptr, type_ptr] = e.at(ID);
@@ -4328,7 +4318,7 @@ public:
         return false;
     }
 
-    // std::optional<std::pair<Value, type::TypePtr>> globalLookup(const std::string& name) const {
+    // std::optional<std::pair<value::Value, type::TypePtr>> globalLookup(const std::string& name) const {
     //     if (env[0].first.contains(name)) {
     //         const auto& [value_ptr, type_ptr] = env[0].first.at(name);
     //         return {{*value_ptr, type_ptr}};
@@ -4350,8 +4340,8 @@ public:
     }
 
 
-    static Environment envStackToEnvMap(const std::vector<std::pair<Environment, EnvTag>>& env) {
-        Environment e;
+    static value::Environment envStackToEnvMap(const std::vector<std::pair<value::Environment, value::EnvTag>>& env) {
+        value::Environment e;
         for(const auto& curr_env : env)
             for(const auto& [key, value] : curr_env.first)
                 e[key] = value; // I want the recent values (higher in the stack) to be the ones captured
@@ -4359,7 +4349,7 @@ public:
     }
 
 
-    // static void printEnv(const Environment& e) noexcept {
+    // static void printEnv(const value::Environment& e) noexcept {
     //     // const auto& e = envStackToEnvMap();
 
     //     for (const auto& [ID, v] : e) {
@@ -4370,7 +4360,7 @@ public:
     // }
 
 
-    // static void printEnv(const std::vector<std::pair<Environment, EnvTag>>& env) noexcept {
+    // static void printEnv(const std::vector<std::pair<value::Environment, EnvTag>>& env) noexcept {
     //     const auto& e = envStackToEnvMap(env);
 
     //     for (const auto& [ID, v] : e) {

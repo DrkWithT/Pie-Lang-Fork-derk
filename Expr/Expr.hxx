@@ -1070,7 +1070,7 @@ struct Closure : Expr {
     } envs;
 
     // whether it's a member function or not
-    mutable std::optional<Object> self{};
+    mutable std::optional<value::Object> self{};
 
     Closure(std::vector<StringID> ps, ExprPtr b, type::FuncType t) noexcept
     : params{std::move(ps)}, body{std::move(b)}, type{std::move(t)} { }
@@ -1087,17 +1087,17 @@ struct Closure : Expr {
     }
 
     // const as in doesn't change params or body.
-    void capture(const Environment& e) const {
+    void capture(const value::Environment& e) const {
         for (const auto& [key, value] : e) {
             envs.env.env[key] = value;
         }
     }
-    void returnCapture(const Environment& e) const {
+    void returnCapture(const value::Environment& e) const {
         for (const auto& [key, value] : e) {
             envs.returned_env.env[key] = value;
         }
     }
-    void passedCapture(const Environment& e) const {
+    void passedCapture(const value::Environment& e) const {
         for (const auto& [key, value] : e) {
             envs.passed_env.env[key] = value;
         }
@@ -1115,7 +1115,7 @@ struct Closure : Expr {
         }
     }
 
-    void captureThis(const Object& obj) const { self = obj; }
+    void captureThis(const value::Object& obj) const { self = obj; }
 
 
     std::string stringify(const size_t indent = 0) const override {

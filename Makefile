@@ -11,7 +11,7 @@ ARGS = -Wall -Wextra -Wpedantic -Wno-missing-braces #-Wnrvo
 WEB_ARGS = -sWASM=1 -sFORCE_FILESYSTEM -sEXPORTED_RUNTIME_METHODS='["callMain"]' \
 	 -sASSERTIONS -sENVIRONMENT=web -INVOKE_RUN_AT_START=0 -sEXIT_RUNTIME=0 -sNO_DISABLE_EXCEPTION_CATCHING
 
-CPP = Type/*.cxx Interp/*.cxx
+CPP = Type/*.cxx Value/*.cxx
 SAN = -fsanitize=address -fsanitize=undefined # -g3
 
 OUTPUT_NAME = Pie

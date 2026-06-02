@@ -4,7 +4,7 @@
 
 
 inline namespace pie {
-inline namespace value {
+namespace value {
 
 struct Members;
 using Object = std::pair<type::TypePtr, std::shared_ptr<Members>>;
@@ -30,7 +30,7 @@ using Object = std::pair<type::TypePtr, std::shared_ptr<Members>>;
 
 inline namespace pie {
 
-inline namespace value {
+namespace value {
 
 std::string stringify(const Value& value, const size_t indent) {
     std::string s;

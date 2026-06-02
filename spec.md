@@ -232,7 +232,8 @@ type_annotation :=
 
 
 assignment :=
-      expr type_annotation? "=" expr
+      name "=" expr
+    | name type_annotation? "=" expr
 
 
 closure :=
@@ -347,7 +348,7 @@ loop :=
     "loop" expr "=>" expr expr ("=>" expr)?
 
 
-break := "break"
+break := "break" expr
 
 
 continue := "continue"

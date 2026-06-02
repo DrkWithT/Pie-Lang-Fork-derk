@@ -20,6 +20,22 @@
 
 
 
+TEST_CASE("Invalid Operators Import", "[Operator]") {
+    const auto src1 = R"(
+space std {
+    mixfix(LOW +) if : : else : =
+        (cond: Bool, thn, els) =>
+            __builtin_conditional(cond, thn, els);
+};
+
+
+use std::if;
+)";
+
+    REQUIRE_THROWS(pie::test::run(src1));
+}
+
+
 
 TEST_CASE("Importing Mixfix With Prefix and Latter Operator Name", "[Operator]") {
     const auto src1 = R"(

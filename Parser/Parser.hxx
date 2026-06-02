@@ -887,11 +887,12 @@ public:
                 break;
 
             case NONE:
+                // name will always be empty if no filter is specified!
                 for (const auto& [op_name, op] : ns->prefix_ops)
-                    if (name.empty() or op_name == name) env.back().first.prefix_op_env[op_name] = op;
+                    env.back().first.prefix_op_env[op_name] = op;
 
                 for (const auto& [op_name, op] : ns->ops)
-                    if (name.empty() or op_name == name) env.back().first.op_env[op_name] = op;
+                    env.back().first.op_env[op_name] = op;
 
                 break;
 

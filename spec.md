@@ -118,15 +118,12 @@ Any text that is between `.::` and `::.`.
 
 
 ## Chapter 3: Grammar
-A Pie program consists of 0 or more expressions.
+A Pie program consists of 1 or more expressions.
+The grammar is stateful, so the grammar below is ambiguous, espacially in `unary_op`, `binary_op`, `post_op`, `cirum_op`, and `op_call`.
 
-The grammar is stateful.
-There are 2 environments that represent the state of the grammar:
-- Scope Environment ($\pi$)
-- Namespace Environment ($\tau$)
+A more specified grammar with judgment rules to disambiguate it will be provided soon in newer versions of Pie. As of now, this should suffice.
 
-Both of these environments act like a stack, where you can $push$ and $pop$ from them.
-
+<!-- 
 $\pi$ consist of a
 The environment $\delta$ acts like a stack of lists. The lists contain operator info.
 
@@ -134,10 +131,12 @@ Operator info consists of:
 - Operator Name
 - Operator Kind
 - Operator Precedence
-```
-program := expression*
+-->
 
-expression :=
+```
+program := expr+
+
+expr :=
       num
     | bool
     | string
@@ -146,7 +145,9 @@ expression :=
     | map
     | grouping
     | block
+    | typing_context_type
     | assignment
+    | fix
     | unary_op
     | binary_op
     | post_op
@@ -160,26 +161,30 @@ expression :=
     | space_access
     | use
     | use_space
+    | use_fix
     | import
     | union
     | match
     | loop
     | break
     | continue
-    | type
-    | fix
     | unary_fold
     | separated_unary_fold
     | binary_fold
     | separated_binary_fold
 
 
-num :=
-      int | double
+
 int :=
       -?[0-9]+
+
+
 double :=
       \-?[0-9]+\.[0-9]+
+
+
+num :=
+      int | double
 
 
 bool :=
@@ -191,62 +196,188 @@ string :=
 
 
 name :=
-      ^(?!\d+$)[a-zA-Z0-9!@#$%^&|*+~\-_\\\'\/<>\[\]]+$
+      ^(?!\d+$)[a-zA-Z0-9\?!@#$%^&|*+~\-_\\\'\/<>\[\]]+$
+
 
 list :=
-      "{" (expression ("," expression)*)? "}"
+      "{" (expr ("," expr)*)? "}"
+
 
 map :=
       "{" ":" "}"
-    | "{" expression : expression ("," expression : expression)* "}"
+    | "{" expr : expr ("," expr : expr)* "}"
 
 
 grouping :=
-      "(" expression ")"
+      "(" expr ")"
 
 
 block :=
-      "{" (expression ";")+ "}"
+      "{" (expr ";")+ "}"
+
+
+type :=
+      expr
+    | "(" (type ("," type)*)? ")" ":" type
+    | "{" type "}"
+    | "{" type ":" type "}"
+
+
+typing_context_type :=
+      ":" type
+
+
+type_annotation :=
+      ":" type
 
 
 assignment :=
-      expression "=" expression
+      expr type_annotation? "=" expr
+
+
+closure :=
+      "(" (expr type_annotation?)* ")" type_annotation?  "=>" expr
+
+
+fix :=
+      prefix
+    | infix
+    | suffix
+    | exfix
+    | mixfix
+
+
+prefix :=
+      "prefix" ("(" prec ")")? name "=" "(" expr type_annotation? ")" "=>" expr
+
+
+infix :=
+      "infix" ("(" prec ")")? name "=" "(" expr type_annotation? "," expr type_annotation? ")" "=>" expr
+
+
+suffix :=
+      "suffix" ("(" prec ")")? name "=" "(" expr type_annotation? ")" "=>" expr
+
+
+exfix :=
+      "exfix" name ":" name "=" "(" expr type_annotation? ")" "=>" expr
+
+
+exfix :=
+      "exfix" "(" prec ")" ":"? name (name | ":")* "=" "(" (expr type_annotation)* ")" "=>" expr
+
+
+unary_op :=
+      name expr
+
+
+binary_op :=
+      expr name expr
+
+
+post_op :=
+      expr name
+
+
+circum_op :=
+      name expr name
+
+
+op_call :=
+      (name (name|expr)*) | (expr name (name|expr)*)
+
+
+call :=
+      expr "(" (expr ("," expr)*)? ")"
+
+
+class :=
+      "class" "{" (assignment ";")* "}"
+
+
+union :=
+      "union" "{" (type ";")* "}"
+
+
+access :=
+      expr "." name
+
+
+namespace :=
+      "space" "{" (expr ";")* "}"
+
+
+space_access :=
+      name "::" name
+
+
+use :=
+      "use" name ("::" name)+
+
+
+use_space :=
+      "use space" name ("::" name)* "::"?
+
+
+use_fix :=
+      "use" ("prefix"|"infix"|"suffix"|"exfix"|"mixfix") name ("::" name)* "::"
+
+
+import :=
+      "import" name
+
+
+single :=
+      expr? ("=" expr)? (":" type)?
+
+
+structure :=
+      name "(" (single ("," single)*)? ")"
+
+
+pattern :=
+      single | structure
+
+
+match :=
+      "match" expr "{" (pattern ("&" expr)? ("|" pattern ("&" expr)?)* "=>" expr ";")* "}"
+
+
+loop :=
+    "loop" expr "=>" expr expr ("=>" expr)?
+
+
+break := "break"
+
+
+continue := "continue"
+
+
+unary_fold :=
+      "(" expr name "..." ")"
+    | "(" "..." name expr ")"
+
+
+separated_unary_fold :=
+      "(" expr name "... name expr ")"
+
+binary_fold :=
+      "(" expr name expr name "..." ")"
+    | "(" "..." name expr name expr ")"
+
+separated_binary_fold :=
+      "(" expr name expr name "..." name expr ")"
+      "(" expr name "..." name expr name expr ")"
 
 ```
+
+<!--
+```
 $$
-\frac{\text{Premise 1} \quad \text{Premise 2}}{\text{Conclusion}} \text{ (Rule Name)}
+\frac{\text{Premise 1} \quad \text{Premise 2}}{\text{Conclusion}} \text{ (Operator Definition)}
 $$
 ```
-| unary_op
-| binary_op
-| post_op
-| circum_op
-| op_call
-| closure
-| call
-| class
-| access
-| namespace
-| space_access
-| use
-| use_space
-| import
-| union
-| match
-| loop
-| break
-| continue
-| type
-| fix
-| unary_fold
-| separated_unary_fold
-| binary_fold
-| separated_binary_fold
-
-
-````
-
-
+-->
 
 
 
@@ -336,7 +467,7 @@ a = false;
 
 var: Int = 5;
 var: String = "five";
-````
+```
 
 The following program is ill-formed:
 ```pie
@@ -840,7 +971,7 @@ A type is said to be converitble to to another type if it can be implicitly conv
 #### 5.6.2 Allowed Conversions
 Only the following conversions are allowed to happen implicitly.
 - Any type -> `Any`
-- Any type -> `Syntax`
+<!-- - Any type -> `Syntax` -->
 - Any type `T` -> `union { ...; T; ...; }`
 
 
@@ -911,7 +1042,7 @@ __builtin_print(result);
 
 ### 6.1 Syntax
 There are 4 main parts to declaring a new operator.
-`<kind> <(precedence)>? <operator_name> = <closure_literal>`
+`<kind> <(precedence)>? <operator_name> = <closure>`
 - Operator Kind
 - Precedence Level
 - Operator Name
@@ -958,7 +1089,7 @@ Pie understand the precendence levels of these operators, which are ordered from
 - `()`
 - `::`
 
-In addition to those, there are 2 more special precedence levels: `HIGH`, and `LOW`. These 2 special values can also be used as nudged precedences.
+In addition to those, there are 2 more special precedence levels: `HIGH`, and `LOW`. These 2 special values, which may not be used on their own. They may only be used as nudged precedences.
 
 Note that any user-defined-operators may also be used as a precedence level.
 
@@ -1066,7 +1197,8 @@ s = "Pie" + " is cool";
 #### 6.2.1 Overload Resolution
 
 ...
-
+<!-- 
+Resolving which overload Pie chooses depends on the type of the value passed to the operator. The operator with a perfect match **MUST** be picked. If there any no perfect matches... -->
 
 
 

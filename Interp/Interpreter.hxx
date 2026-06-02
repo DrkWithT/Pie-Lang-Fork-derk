@@ -1807,22 +1807,12 @@ public:
         types.reserve(values.size());
         for (const auto& v : values) types.push_back(validateType(typeOf(v)));
 
-        // std::transform(values.begin(), values.end(),
-        //     std::back_inserter(types),
-        //     [this] (const auto& v) { return validateType(typeOf(v)); }
-        // );
-
 
         for (const auto& func : funcs) {
             auto closure = dynamic_cast<expr::Closure*>(func.get());
 
             bool found = true;
             for (const auto& [arg_value, arg_type, param_type] : std::views::zip(values, types, closure->type.params)) {
-                // if (not (*param_type >= *arg_type)) {
-                //     found = false;
-                //     break;
-                // }
-
                 if (not param_type->typeCheck(this, arg_value, arg_type)) {
                     found = false;
                     break;

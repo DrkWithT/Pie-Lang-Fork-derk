@@ -68,7 +68,7 @@ namespace cli {
 
             if (run) {
                 if (not exprs.empty()) {
-                    Value value;
+                    value::Value value;
                     for (auto& expr : exprs) value = std::visit(visitor, std::move(expr)->variant());
 
                     std::println("{}", stringify(value));
@@ -105,7 +105,7 @@ namespace cli {
 
         if (print_parsed)
             for(const auto& expr : exprs)
-                std::println(std::clog, "{};", expr->stringify(0));
+                std::println(std::clog, "{};", expr->stringify());
 
         if(run and (print_parsed or print_tokens)) puts("Output:\n");
 

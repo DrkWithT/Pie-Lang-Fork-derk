@@ -362,13 +362,15 @@ unary_fold :=
 separated_unary_fold :=
       "(" expr name "... name expr ")"
 
+
 binary_fold :=
       "(" expr name expr name "..." ")"
     | "(" "..." name expr name expr ")"
 
+
 separated_binary_fold :=
       "(" expr name expr name "..." name expr ")"
-      "(" expr name "..." name expr name expr ")"
+    | "(" expr name "..." name expr name expr ")"
 
 ```
 

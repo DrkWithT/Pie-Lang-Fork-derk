@@ -1,4 +1,5 @@
 #include "Value.hxx"
+#include <variant>
 
 
 
@@ -36,9 +37,7 @@ std::string stringify(const Value& value, const size_t indent) {
     std::string s;
 
     if (std::holds_alternative<bool>(value)) {
-        const auto& v = std::get<bool>(value);
-        // s = std::to_string(v); // reason I did this in the first place is to allow for copy-ellision to happen
-        s = v ? "true" : "false";
+        s = get<bool>(value) ? "true" : "false";
     }
 
     else if (std::holds_alternative<BigInt>(value)) {
@@ -57,13 +56,16 @@ std::string stringify(const Value& value, const size_t indent) {
     }
 
     else if (std::holds_alternative<expr::Closure>(value)) {
-        const auto& v = std::get<expr::Closure>(value);
-
-        s = v.stringify(indent);
+        s = get<expr::Closure>(value).stringify(indent);
     }
 
-    else if (std::holds_alternative<type::TypePtr>(value)) s = get<type::TypePtr>(value)->text();
+    else if (std::holds_alternative<BuiltinFunction>(value)) {
+        s = get<BuiltinFunction>(value).func_name;
+    }
 
+    else if (std::holds_alternative<type::TypePtr>(value)) {
+        s = get<type::TypePtr>(value)->text();
+    }
 
     else if (std::holds_alternative<Object>(value)) {
         const auto& v = std::get<Object>(value);

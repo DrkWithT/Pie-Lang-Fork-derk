@@ -66,16 +66,31 @@ namespace type {
     struct BuiltinType : Type {
         std::string t;
 
-        explicit BuiltinType(std::string s) noexcept : t{std::move(s)} {}
+        explicit BuiltinType(std::string s) noexcept : t{std::move(s)} { }
 
         std::string text(const size_t = 0) const override { return t; };
         bool involvesT(const Type& T) const override { return T == *this; }
         bool typeCheck(interp::Visitor*, const value::Value&, const TypePtr& other) const override { return *this >= *other; }
 
-        bool operator>(const Type& other) const override;
+        bool operator> (const Type& other) const override;
         bool operator>=(const Type& other) const override;
 
         TypePtr clone() const override { return std::make_shared<BuiltinType>(*this); }
+    };
+
+
+    struct BuiltinFunctionType : Type {
+
+        explicit BuiltinFunctionType() noexcept { }
+
+        std::string text(const size_t = 0) const override { return "BuiltinFunction"; }
+        bool involvesT(const Type& T) const override { return T == *this; }
+        bool typeCheck(interp::Visitor*, const value::Value&, const TypePtr& other) const override { return *this >= *other; }
+
+        bool operator> (const Type&) const override { return false; }
+        bool operator>=(const Type&) const override { return false; }
+
+        TypePtr clone() const override { return std::make_shared<BuiltinFunctionType>(*this); }
     };
 
 

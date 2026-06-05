@@ -29,7 +29,9 @@ using PackList = std::shared_ptr<Elements>;
 struct Items;
 struct MapValue { std::shared_ptr<Items> items; };
 
-
+struct BuiltinFunction {
+    std::string func_name;
+};
 
 using VariantType = std::variant<
     // ssize_t,
@@ -38,8 +40,8 @@ using VariantType = std::variant<
     bool,
     std::string,
     expr::Closure,
+    BuiltinFunction,
     type::TypePtr,
-    // NameSpace,
     Object,
     expr::Node,
     PackList,

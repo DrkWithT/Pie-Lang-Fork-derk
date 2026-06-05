@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <numeric>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -51,7 +52,6 @@ struct NameSpace {
     Operators op_env;
 
     std::unordered_map<std::string, std::shared_ptr<NameSpace>> children;
-
 };
 
 
@@ -60,17 +60,6 @@ class Visitor {
 
     std::vector<value::Env> env;
 
-    // std::unordered_map<
-    //     std::string,
-    //     std::unordered_map<
-    //         size_t,
-    //         std::tuple<
-    //             value::SpaceRef,
-    //             value::ValuePtr,
-    //             type::TypePtr
-    //         >
-    //     >
-    // > namespaces;
     std::unordered_map<std::string, std::shared_ptr<NameSpace>> global_spaces;
 
     std::vector<NameSpace*> current_space;
@@ -238,7 +227,7 @@ public:
 
         // for now, buitlin functions just return their names as strings...
         // maybe i need to return some builtin type or smth. IDK
-        if (isBuiltin(n->name)) return n->name;
+        if (isBuiltin(n->name)) return value::BuiltinFunction{n->name};
 
 
         if (n->name == "Any"   ) return type::builtins::Any   ();
@@ -258,7 +247,7 @@ public:
     value::Value operator()(const expr::Expansion*) { util::error("Can only expand in function calls or fold expressions!"); }
 
 
-    value::Value operator()(const expr::List* list) {
+    value::Value operator()(const expr::List *list) {
         if (const auto& var = getVar(list->ID); var) return var->first;
 
         std::vector<value::Value> values;
@@ -271,12 +260,13 @@ public:
     }
 
 
-    value::Value operator()(const expr::Map* map) {
+    value::Value operator()(const expr::Map *map) {
         value::MapValue map_value{std::make_shared<value::Items>()};
 
         for (auto [key, expr] : map->items) {
-            // evaluating key here first instead of at function arguments
+            // evaluating key here first instead of inside the call to .insert_or_assign()
             // because functions arguments are indeterminantly evaluated
+            // and I want the evaluation order to be l2r in case of side-effects
 
             auto key_value = std::visit(*this, std::move(key)->variant());
             map_value.items->map.insert_or_assign(
@@ -972,7 +962,7 @@ public:
         }
 
         const auto& left = std::visit(*this, acc->var->variant());
-        if (std::holds_alternative<value::Object>(left)) return objectAccess(std::get<value::Object>(left), acc->name);
+        if (std::holds_alternative<value::Object>(left)) return objectAccess(get<value::Object>(left), acc->name);
 
 
         util::error("Can't access a non-class type!");
@@ -2237,8 +2227,8 @@ public:
 
 
         auto var = std::visit(*this, call->func->variant());
-        if (std::holds_alternative<std::string>(var)) { // that dumb lol. but now it works
-            const auto& name = std::get<std::string>(var);
+        if (std::holds_alternative<value::BuiltinFunction>(var)) { // that dumb lol. but now it works
+            const auto& name = get<value::BuiltinFunction>(var).func_name;
             if (isBuiltin(name)) return evaluateBuiltin(std::move(args), std::move(expand_at), call->named_args, name);
         }
 
@@ -3015,7 +3005,7 @@ public:
 
 
     value::Value constructorCall(const expr::Call *call, value::Value var) {
-        auto type = validateType(std::get<type::TypePtr>(var));
+        auto type = validateType(get<type::TypePtr>(var));
 
 
         if (not type::isClass(type)) return handleNonClasses(call, std::move(type));
@@ -3258,7 +3248,7 @@ public:
         std::string name
     ) {
         //* ============================ FUNCTIONS ============================
-        const auto functions = stdx::make_indexed_tuple<KeyFor>(
+        static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
             //* NULLARY FUNCTIONS
             MapEntry<
                 S<"true">,
@@ -3655,8 +3645,21 @@ public:
 
         if (name == "panic") {
             for (const auto& arg : args) {
-                std::clog << stringify(std::visit(*this, arg->variant())) << ' ';
+                std::print(std::cerr, "{} ", stringify(std::visit(*this, arg->variant())));
             }
+            // std::println(
+            //     std::cerr,
+            //     "{}",
+            //     std::accumulate(
+            //         args.cbegin(),
+            //         args.cend(),
+            //         std::string{},
+            //         [this] (const auto& acc, const auto& elt) {
+            //             return acc + " " + value::stringify(std::visit(*this, elt->variant()));
+            //         }
+            //     )
+            // );
+
             util::error<std::runtime_error, false>("", {});
         }
 
@@ -3867,11 +3870,6 @@ public:
             return ret;
         }
 
-
-        // const auto& value3 = std::visit(*this, call->args[2]->variant());
-        // if (name == "conditional") return execute<3>(stdx::get<S<"conditional">>(functions).value, {value1, value2, value3}, this);
-
-
         util::error("Calling a builtin fuction that doesn't exist!");
     }
 
@@ -4045,6 +4043,10 @@ public:
 
             type.ret = func.type.ret;
             return std::make_shared<type::FuncType>(std::move(type));
+        }
+
+        if (std::holds_alternative<value::BuiltinFunction>(value)) {
+            return std::make_shared<type::BuiltinFunctionType>();
         }
 
         if (std::holds_alternative<value::Object>(value)) {

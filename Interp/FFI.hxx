@@ -32,6 +32,9 @@ public:
 
     bool isStruct() const noexcept { return type->type == FFI_TYPE_STRUCT; }
 
+
+
+    // for debugging
     void print(const size_t indent = 0) const {
         std::string dent(indent, ' ');
 
@@ -54,7 +57,6 @@ public:
 
 inline FFI* prepareFFI(const value::Value& value, const BigInt type_id) {
     const auto value_ptr = new value::Value{value};
-
 
     switch (type_id) {
         case FFI_TYPE_INT: {
@@ -132,7 +134,7 @@ inline FFI* prepareFFI(const value::Value& value, const BigInt type_id) {
 
 
 
-inline void pack(std::byte* buffer, const FFI* ffi) {
+inline void pack(std::byte *buffer, const FFI *ffi) {
     if (ffi->isStruct()) {
         size_t offset[256];
         ffi_get_struct_offsets(FFI_DEFAULT_ABI, ffi->type, offset);
@@ -156,6 +158,27 @@ inline void pack(std::byte* buffer, const FFI* ffi) {
     }
 }
 
+
+
+inline void destroy(const FFI *ffi) {
+    if (ffi->isStruct()) {
+        delete[] ffi->multi.values;
+
+        for (size_t i{}; i < ffi->multi.n; ++i)
+            destroy(ffi->multi.nested[i]);
+        delete[] ffi->multi.nested;
+
+        delete[] ffi->type->elements;
+        delete ffi->type;
+    }
+    else {
+        delete ffi->single.value;
+        // delete ffi->single.ptr;
+        // .ptr is referencing the internal data inside .value
+        // so it should be deleted when value is deleted
+
+    }
+}
 
 } // namespace ffi
 } // namespace pie

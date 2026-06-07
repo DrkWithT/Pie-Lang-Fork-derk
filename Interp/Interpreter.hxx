@@ -3685,6 +3685,7 @@ public:
 
         std::deque<std::vector<std::byte>> payloads;
 
+        std::vector<ffi::FFI*> structs_ffis;
 
         // look for `param_types` and `return_types`
         bool found_params{}, found_return{};
@@ -3748,6 +3749,7 @@ public:
 
                             // pointer_values.push_back();
                             values_pointers.push_back(payload);
+                            structs_ffis.push_back(ffi);
 
                         } break;
 
@@ -3826,6 +3828,10 @@ public:
 
             default: // not gonna happend. Already checked up there
                 ret_value = 0;
+        }
+
+        for (const auto& ffi : structs_ffis) {
+            ffi::destroy(ffi);
         }
 
         return ret_value;

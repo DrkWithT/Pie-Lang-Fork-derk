@@ -118,6 +118,28 @@ public:
             // "__builtin_read_whole",
             // "__builtin_read_line",
             // "__builtin_read_lines"
+
+            //* FFI shit
+            "__builtin_dlopen"          ,
+            "__builtin_dlsym"           ,
+            "__builtin_ffi_call"            ,
+            "__builtin_ffi_type_void"   ,
+            "__builtin_ffi_type_int"    ,
+            "__builtin_ffi_type_float"  ,
+            "__builtin_ffi_type_double" ,
+            "__builtin_ffi_type_uint8"  ,
+            "__builtin_ffi_type_sint8"  ,
+            "__builtin_ffi_type_uint16" ,
+            "__builtin_ffi_type_sint16" ,
+            "__builtin_ffi_type_uint32" ,
+            "__builtin_ffi_type_sint32" ,
+            "__builtin_ffi_type_uint64" ,
+            "__builtin_ffi_type_sint64" ,
+            "__builtin_ffi_type_struct" ,
+            "__builtin_ffi_type_pointer",
+            "__builtin_ffi_type_complex",
+            "__builtin_ffi_type_uint128",
+            "__builtin_ffi_type_sint128",
         };
 
 
@@ -401,23 +423,6 @@ public:
                 type->ID = *id;
 
             else std::visit(*this, expr::Type{type}.variant());
-
-            // if (auto expr_type = type::isExpr(type)) {
-            //     std::clog << "expression type: " << type->text() << std::endl;
-            //     if (const auto id = findVar(type->text()); id)
-            //         expr_type->t->ID = *id;
-
-            // }
-
-            // if (auto expr_type = type::isExpr(type)) {
-            //     if (const auto id = findVar(type->text()); id)
-            //         expr_type->t->ID = *id;
-            //     else {
-            //         std::clog << "type: " << type->text() << " doesn't have an ID!" << std::endl;
-            //         std::cin.get();
-            //     }
-            // }
-            // addVar(type->text(), variable_index++);
         }
     }
 
@@ -1058,3 +1063,4 @@ public:
 
 } // namespace analysis
 } // namespace pie
+

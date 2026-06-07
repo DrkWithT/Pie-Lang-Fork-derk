@@ -20,6 +20,33 @@
 
 
 
+TEST_CASE("Expansion Expression inside Constructor Call", "[Variadic][Class]") {
+    const auto src1 = R"(
+C = class {
+    a = 0;
+    b = 0;
+    c = 0;
+    d = a;
+};
+
+
+makeC = (args: ...) => C(args...);
+
+c = makeC(1, 2);
+
+__builtin_print(c);
+
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(Object {
+    a = 1;
+    b = 2;
+    c = 0;
+    d = 1;
+})");
+}
+
+
 TEST_CASE("Invalid Operators Import", "[Operator]") {
     const auto src1 = R"(
 space std {

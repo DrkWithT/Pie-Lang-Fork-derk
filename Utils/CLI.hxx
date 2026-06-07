@@ -17,11 +17,11 @@ inline namespace pie {
 namespace cli {
 
     inline void help() {
-        std::cout << "-t [--token]  :   print tokens\n";
-        std::cout << "   [--ast]    :   print parsed\n";
-        std::cout << "-r [--run]    :   don't run program\n";
-        std::cout << "-h [--help]   :   print this message\n";
-        std::cout << "-c [--command]:   print this message\n";
+        std::println("-t [--token]  :   print tokens");
+        std::println("-a [--ast]    :   print parsed");
+        std::println("-r [--run]    :   don't run program");
+        std::println("-h [--help]   :   print this message");
+        std::println("-c [--command]:   run script from command line");
     }
 
 
@@ -86,7 +86,7 @@ namespace cli {
         const std::filesystem::path fname,
         const bool print_tokens,
         const bool print_parsed,
-        const bool run
+        const bool norun
     ) {
         auto src = util::readFile(fname.string());
 
@@ -107,13 +107,13 @@ namespace cli {
             for(const auto& expr : exprs)
                 std::println(std::clog, "{};", expr->stringify());
 
-        if(run and (print_parsed or print_tokens)) puts("Output:\n");
+        if(not norun and (print_parsed or print_tokens)) puts("Output:\n");
 
         pie::analysis::LexicalScoping anal;
         for (auto& expr : exprs)
             std::visit(anal, expr->variant());
 
-        if (run) {
+        if (not norun) {
             interp::Visitor visitor{std::move(anal).indeces};
             for (const auto& expr : exprs)
                 std::visit(visitor, expr->variant());
@@ -126,7 +126,7 @@ namespace cli {
         std::string src,
         const bool print_tokens,
         const bool print_parsed,
-        const bool run
+        const bool norun
     ) {
         Tokens v = lex::lex(std::move(src));
         if (print_tokens) std::println(std::clog, "{}", v);
@@ -141,13 +141,13 @@ namespace cli {
             for(const auto& expr : exprs)
                 std::println(std::clog, "{};", expr->stringify(0));
 
-        if(run and (print_parsed or print_tokens)) puts("Output:\n");
+        if(not norun and (print_parsed or print_tokens)) puts("Output:\n");
 
         pie::analysis::LexicalScoping anal;
         for (auto& expr : exprs)
             std::visit(anal, expr->variant());
 
-        if (run) {
+        if (not norun) {
             interp::Visitor visitor{std::move(anal).indeces};
             for (const auto& expr : exprs)
                 std::visit(visitor, expr->variant());

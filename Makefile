@@ -21,14 +21,22 @@ WEB_OUTPUT_NAME = Pie.js
 
 # Pulled from GitHub
 REMOTE_INCLUDE_DIR = remote_includes
-MP11_DIR = $(REMOTE_INCLUDE_DIR)/mp11
-CPP_STD_EXT_DIR = $(REMOTE_INCLUDE_DIR)/cpp-std-extensions
+MP11_DIR           = $(REMOTE_INCLUDE_DIR)/mp11
+CPP_STD_EXT_DIR    = $(REMOTE_INCLUDE_DIR)/cpp-std-extensions
+LIB_FFI_DIR        = $(REMOTE_INCLUDE_DIR)/libffi
+
 
 # Saved locally
 LOCAL_INCLUDE_DIR = includes
 
+
 # Include paths
-INCLUDE = -I$(MP11_DIR)/include/ -I$(CPP_STD_EXT_DIR)/include/
+INCLUDE = \
+	-I$(MP11_DIR)/include/       \
+	-I$(CPP_STD_EXT_DIR)/include/ \
+	-I$(LIB_FFI_DIR)/include/	   \
+	-L/usr/local/lib -lffi
+
 
 # Main target
 main: checklibs main.cc
@@ -54,13 +62,17 @@ checklibs:
         git clone https://github.com/boostorg/mp11 $(MP11_DIR); \
 	fi
 	@if [ ! -d "$(CPP_STD_EXT_DIR)" ]; then \
-        echo "Cloning cpp-std-extensions..."; \
+        echo "Cloning cpp-std-extensions...";\
         git clone https://github.com/intel/cpp-std-extensions $(CPP_STD_EXT_DIR); \
+	fi
+	@if [ ! -d "$(LIB_FFI_DIR)" ]; then \
+        echo "Cloning libffi..."; \
+        git clone https://github.com/libffi/libffi.git $(LIB_FFI_DIR); \
 	fi
 
 
 clean:
-	rm -f $(OUTPUT_NAME) run_tests
+	rm -f $(OUTPUT_NAME) run_tests && rm -rf remote_includes/*
 
 .PHONY: checklibs clean
 

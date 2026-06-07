@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
     bool print_tokens       = false;
     bool print_parsed       = false;
     bool print_help         = false;
-    bool run                = true;
+    bool norun              = false;
     bool repl               = false;
     bool command            = false;
 
@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
         if      (argv[1] == "-t"sv or argv[1] == "--token"sv  ) print_tokens       = true ;
         else if (argv[1] == "-a"sv or argv[1] == "--ast"sv    ) print_parsed       = true ;
         else if (argv[1] == "-h"sv or argv[1] == "--help"sv   ) print_help         = true ;
-        else if (argv[1] == "-r"sv or argv[1] == "--run"sv    ) run                = false;
+        else if (argv[1] == "-r"sv or argv[1] == "--norun"sv  ) norun              = true;
         else if (argv[1] == "-c"sv or argv[1] == "--command"sv) command            = true ;
         else if (argv[1] == "-repl"sv                         ) repl               = true ;
         else content = argv[1];
@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
 
     try {
         if (command) {
-            pie::cli::run(std::string{content}, print_tokens, print_parsed, run);
+            pie::cli::run(std::string{content}, print_tokens, print_parsed, norun);
             return 0;
         }
 
@@ -50,16 +50,21 @@ int main(int argc, char *argv[]) {
         if (content.empty() or repl) {
             pie::cli::REPL(
                 std::move(canonical_root),
-                print_tokens, print_parsed, run
+                print_tokens, print_parsed, norun
             );
         }
         else {
-            pie::cli::runFile(std::filesystem::path(content), print_tokens, print_parsed, run);
+            pie::cli::runFile(
+                std::filesystem::path(content),
+                print_tokens,
+                print_parsed,
+                norun
+            );
         }
         #endif
     }
     catch(const std::exception& e) {
-        std::cerr << e.what() << std::endl;
+        std::println(std::cerr, "{}", e.what());
         return 1;
     }
 }

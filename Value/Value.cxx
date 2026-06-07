@@ -112,6 +112,7 @@ std::string stringify(const Value& value, const size_t indent) {
             comma = ", ";
         }
     }
+
     else if (std::holds_alternative<ListValue>(value)) {
         s += '{';
 
@@ -123,6 +124,7 @@ std::string stringify(const Value& value, const size_t indent) {
 
         s += '}';
     }
+
     else if (std::holds_alternative<MapValue>(value)) {
         s += '{';
 
@@ -134,6 +136,11 @@ std::string stringify(const Value& value, const size_t indent) {
 
         s += '}';
     }
+
+    // else if (std::holds_alternative<Pointer>(value)) {
+    //     s = std::format("{}", get<Pointer>(value));
+    // }
+
 
     else util::error("Type not found!");
 
@@ -166,6 +173,11 @@ inline std::ostream& operator<<(std::ostream& os, const Environment& env) {
 
     if (std::holds_alternative<expr::Closure>(lhs) and std::holds_alternative<expr::Closure>(rhs))
         return get<expr::Closure>(lhs).stringify() == get<expr::Closure>(rhs).stringify();
+
+
+    if (std::holds_alternative<BuiltinFunction>(lhs) and std::holds_alternative<BuiltinFunction>(rhs))
+        return get<BuiltinFunction>(lhs).func_name == get<BuiltinFunction>(rhs).func_name;
+
 
 
     if (std::holds_alternative<type::TypePtr>(lhs) and std::holds_alternative<type::TypePtr>(rhs)) {
@@ -217,13 +229,16 @@ inline std::ostream& operator<<(std::ostream& os, const Environment& env) {
     if (std::holds_alternative<PackList>(lhs) and std::holds_alternative<PackList>(rhs))
         return get<PackList>(lhs)->values == get<PackList>(rhs)->values;
 
-    if (std::holds_alternative<ListValue>(lhs) and std::holds_alternative<ListValue>(rhs)) {
+    if (std::holds_alternative<ListValue>(lhs) and std::holds_alternative<ListValue>(rhs))
         return get<ListValue>(lhs).elts->values == get<ListValue>(rhs).elts->values;
-    }
 
-    if (std::holds_alternative<MapValue>(lhs) and std::holds_alternative<MapValue>(rhs)) {
+    if (std::holds_alternative<MapValue>(lhs) and std::holds_alternative<MapValue>(rhs))
         return get<MapValue>(lhs).items->map == get<MapValue>(rhs).items->map;
-    }
+
+
+    // if (std::holds_alternative<Pointer>(lhs) and std::holds_alternative<Pointer>(rhs))
+    //     return get<Pointer>(lhs) == get<Pointer>(rhs);
+
 
     // error();
     return false;

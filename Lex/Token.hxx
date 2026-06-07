@@ -104,7 +104,7 @@ constexpr const char* stringify(const TokenKind token) noexcept {
         case USE:           return "USE";
 
         case NONE:
-            std::cerr << "Internal Error!\n";
+            std::println(std::cerr, "Internal Error!");
             exit(1);
     }
 

@@ -1,0 +1,564 @@
+#pragma once
+
+// #include <cmath>
+
+#include <dlfcn.h>
+
+#include <stdx/tuple.hpp>
+#include <ffi.h>
+
+#include "../Utils/ConstexprLookup.hxx"
+#include "../Utils/Exceptions.hxx"
+
+
+inline namespace pie {
+
+
+//* ============================ FUNCTIONS ============================
+static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
+    //* NULLARY FUNCTIONS
+    MapEntry<
+        S<"input_str">,
+        Func<"input_str",
+            decltype([](const auto&) {
+                std::string out;
+                std::getline(std::cin, out);
+                return out;
+            }),
+            void
+        >
+    >{},
+    MapEntry<
+        S<"input_int">,
+        Func<"input_int",
+            decltype([](const auto&) {
+                std::string out;
+                std::getline(std::cin, out);
+                if (not std::ranges::all_of(out, isdigit)) util::error("'__builtin_input_int' recieved a non-int \"" + out + "\"!");
+
+                return std::stoll(out);
+            }),
+            void
+        >
+    >{},
+
+    //* UNARY FUNCTIONS
+
+    MapEntry<
+        S<"len">,
+        Func<"len",
+            decltype([](const auto& x, const auto&) {
+                if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, std::string>)
+                        return static_cast<BigInt>(x.length());
+
+                else if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, value::PackList>)
+                    return static_cast<BigInt>(x->values.size());
+
+                else if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, value::ListValue>)
+                    return static_cast<BigInt>(x.elts->values.size());
+
+                else // map value
+                    return static_cast<BigInt>(x.items->map.size());
+            }),
+            TypeList<std::string>,
+            TypeList<value::PackList>,
+            TypeList<value::ListValue>,
+            TypeList<value::MapValue>
+        >
+    >{},
+
+    MapEntry<
+        S<"type_of">,
+        Func<"type_of",
+            decltype([](const auto& x, const auto& that) {
+                return that->typeOf(x);
+            }),
+            TypeList<Any>
+        >
+    >{},
+
+    MapEntry<
+        S<"neg">,
+        Func<"neg",
+            decltype([](const auto& x, const auto&) { return -x; }),
+            TypeList<BigInt>,
+            TypeList<double>
+        >
+    >{},
+
+    MapEntry<
+        S<"abs">,
+        Func<"abs",
+            decltype([](const auto& x, const auto&) { return std::abs(x); }),
+            TypeList<BigInt>,
+            TypeList<double>
+        >
+    >{},
+
+    MapEntry<
+        S<"not">,
+        Func<"not",
+            decltype([](const auto& x, const auto&) { return not x; }),
+            TypeList<bool>
+        >
+    >{},
+
+    MapEntry<
+        S<"to_int">,
+        Func<"to_int",
+            decltype([](const auto& x, const auto&) -> BigInt {
+                if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, std::string>)
+                    return std::stoll(x);
+
+                // if constexpr (
+                //     std::is_same_v<std::remove_cvref_t<decltype(x)>, BigInt> or
+                //     std::is_same_v<std::remove_cvref_t<decltype(x)>, double> or
+                //     std::is_same_v<std::remove_cvref_t<decltype(x)>, bool>
+                // )
+                else return x;
+            }),
+            TypeList<BigInt>,
+            TypeList<double>,
+            TypeList<bool>,
+            TypeList<std::string>
+        >
+    >{},
+
+    MapEntry<
+        S<"to_double">,
+        Func<"to_double",
+            decltype([](const auto& x, const auto&) -> double {
+                if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, std::string>)
+                    return std::stod(x);
+
+                // if constexpr (
+                //     std::is_same_v<std::remove_cvref_t<decltype(x)>, BigInt> or
+                //     std::is_same_v<std::remove_cvref_t<decltype(x)>, double> or
+                //     std::is_same_v<std::remove_cvref_t<decltype(x)>, bool>
+                // )
+                else return x;
+            }),
+            TypeList<BigInt>,
+            TypeList<double>,
+            TypeList<bool>,
+            TypeList<std::string>
+        >
+    >{},
+
+    MapEntry<
+        S<"to_string">,
+        Func<"to_string",
+            decltype([](const auto& x, const auto&) { return stringify(x); }),
+            TypeList<Any>
+        >
+    >{},
+
+    MapEntry<
+        S<"eval">,
+        Func<"eval",
+            decltype([](const auto& x, const auto& that) {
+                return std::visit(*that, x);
+            }),
+            TypeList<expr::Node>
+        >
+    >{},
+
+    MapEntry<
+        S<"pop">,
+        Func<"pop",
+            decltype([](const auto& cont, const auto&) -> value::Value {
+                const auto back = cont.elts->values.back();
+                cont.elts->values.pop_back();
+                return back;
+            }),
+            TypeList<value::ListValue>
+        >
+    >{},
+
+
+    //* BINARY FUNCTIONS
+    MapEntry<
+        S<"get">,
+        Func<"get",
+            decltype([](const auto& a, const auto& ind, const auto&) -> value::Value {
+                using T = std::remove_cvref_t<decltype(a)>;
+
+                if constexpr (std::is_same_v<T, value::ListValue>) {
+                    if (ind < 0 or size_t(ind) >= a.elts->values.size())
+                        util::error("Accessing list '" + stringify(a) + "' at index '" + std::to_string(ind) + "' which is out of bounds!");
+
+                    return a.elts->values[ind]; 
+                }
+
+                else if constexpr (std::is_same_v<T, value::MapValue>) {
+                    auto key = stringify(ind);
+                    if (not a.items->map.contains(key))
+                        util::error("Accessing Map '" + stringify(a) + "' at key '" + key + "' which doesn't exist!");
+
+                    return a.items->map.at(key);
+                }
+
+                else { // if constexpr (std::is_same_v<std::remove_cvref_t<decltype(a)>, std::string>) {
+                    if (ind < 0 or size_t(ind) >= a.length())
+                        util::error("Accessing string '" + a + "' at index '" + std::to_string(ind) + "' which is out of bounds!");
+                    return std::string{a[ind]};
+                }
+            }),
+            TypeList<value::ListValue, BigInt>,
+            TypeList<value::MapValue, Any>,
+            TypeList<std::string, BigInt>
+        >
+    >{},
+
+    MapEntry<
+        S<"set">,
+        Func<"set",
+            decltype([](const auto& cont, const auto& at, const auto& elt, const auto&) -> value::Value {
+                using T = std::remove_cvref_t<decltype(cont)>;
+
+                if constexpr (std::is_same_v<T, value::ListValue>) {
+                    if (at < 0 or size_t(at) >= cont.elts->values.size())
+                        util::error("Accessing list '" + stringify(cont) + "' at index '" + std::to_string(at) + "' which is out of bounds!");
+
+                    return cont.elts->values[at] = elt;
+                }
+
+                else if constexpr (std::is_same_v<T, value::MapValue>) {
+                    auto key = stringify(at);
+                    return cont.items->map[key] = elt;
+                }
+            }),
+            TypeList<value::ListValue, BigInt, Any>,
+            TypeList<value::MapValue, Any, Any>
+            // TypeList<std::string, BigInt>
+        >
+    >{},
+
+    MapEntry<
+        S<"push">,
+        Func<"push",
+            decltype([](const auto& cont, const auto& elt, const auto&) -> value::Value {
+                cont.elts->values.push_back(elt);
+                return elt;
+            }),
+            TypeList<value::ListValue, Any>
+        >
+    >{},
+
+    MapEntry<
+        S<"add">,
+        Func<"add",
+            decltype([](const auto& a, const auto& b, const auto&) { return a + b; }),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    MapEntry<
+        S<"sub">,
+        Func<"sub",
+            decltype([](const auto& a, const auto& b, const auto&) { return a - b; }),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    MapEntry<
+        S<"mul">,
+        Func<"mul",
+            decltype([](const auto& a, const auto& b, const auto&) { return a * b; }),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    MapEntry<
+        S<"div">,
+        Func<"div",
+            decltype([](const auto& a, const auto& b, const auto&) { return a / b; }),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    MapEntry<
+        S<"mod">,
+        Func<"mod",
+            decltype([](const auto& a, const auto& b, const auto&) { return a % b; }),
+            TypeList<BigInt, BigInt>
+        >
+    >{},
+
+    MapEntry<
+        S<"bit_and">,
+        Func<"bit_and",
+            decltype([](const auto& a, const auto& b, const auto&) { return a & b; }),
+            TypeList<BigInt, BigInt>
+        >
+    >{},
+
+    MapEntry<
+        S<"bit_or">,
+        Func<"bit_or",
+            decltype([](const auto& a, const auto& b, const auto&) { return a | b; }),
+            TypeList<BigInt, BigInt>
+        >
+    >{},
+
+    MapEntry<
+        S<"xor">,
+        Func<"xor",
+            decltype([](const auto& a, const auto& b, const auto&) { return a ^ b; }),
+            TypeList<BigInt, BigInt>
+        >
+    >{},
+
+    MapEntry<
+        S<"pow">,
+        Func<"pow",
+            decltype(
+                [](const auto& a, const auto& b, const auto&) -> std::common_type_t<decltype(a), decltype(b)> { return std::pow(a, b); }
+            ),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    MapEntry<
+        S<"gt">,
+        Func<"gt",
+            decltype([](const auto& a, const auto& b, const auto&) { return a > b; }),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    MapEntry<
+        S<"geq">,
+        Func<"geq",
+            decltype([](const auto& a, const auto& b, const auto&) { return a >= b; }),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    MapEntry<
+        S<"eq">,
+        Func<"eq",
+            decltype([](auto a, auto b, const auto&) { return a == b; }),
+            TypeList<Any, Any>
+        >
+    >{},
+
+    MapEntry<
+        S<"leq">,
+        Func<"leq",
+            decltype([](const auto& a, const auto& b, const auto&) { return a <= b; }),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    MapEntry<
+        S<"lt">,
+        Func<"lt",
+            decltype([](const auto& a, const auto& b, const auto&) { return a < b; }),
+            TypeList<BigInt, BigInt>,
+            TypeList<BigInt, double>,
+            TypeList<double, BigInt>,
+            TypeList<double, double>
+        >
+    >{},
+
+    //* FFI 
+    MapEntry<
+        S<"dlopen">,
+        Func<"dlopen",
+            decltype([](const auto& path, const auto&) {
+                auto dll = dlopen(path.data(), RTLD_NOW);
+                if (not dll) util::error<except::OpeningDyLib>(dlerror());
+
+                return reinterpret_cast<BigInt>(dll);
+            }),
+            TypeList<std::string>
+        >
+    >{},
+
+    MapEntry<
+        S<"dlsym">,
+        Func<"dlsym",
+            decltype([](const auto& dll, const auto& func_name, const auto&) {
+                auto handle = reinterpret_cast<void*>(dll);
+
+                auto sym = dlsym(handle, func_name.data());
+                if (not sym) util::error<except::SymbolLookupInDyLib>(dlerror());
+
+                return reinterpret_cast<BigInt>(sym);
+            }),
+            TypeList<BigInt, std::string>
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_void">,
+        Func<"ffi_type_void",
+            decltype([](const auto&) { return FFI_TYPE_VOID; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_int">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_INT; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_float">,
+        Func<"ffi_type_void",
+            decltype([](const auto&) { return FFI_TYPE_FLOAT; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_double">,
+        Func<"ffi_type_void",
+            decltype([](const auto&) { return FFI_TYPE_DOUBLE; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_long_double">,
+        Func<"ffi_type_void",
+            decltype([](const auto&) { return FFI_TYPE_LONGDOUBLE; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_uint8">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_UINT8; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_sint8">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_SINT8; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_uint16">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_UINT16; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_sint16">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_SINT16; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_uint32">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_UINT32; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_sint32">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_SINT32; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_uint64">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_UINT64; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_sint64">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_SINT64; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_struct">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_STRUCT; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_pointer">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_POINTER; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_complex">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_COMPLEX; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_uint128">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_UINT128; }),
+            void
+        >
+    >{},
+
+    MapEntry<
+        S<"ffi_type_sint128">,
+        Func<"ffi_type_int",
+            decltype([](const auto&) { return FFI_TYPE_SINT128; }),
+            void
+        >
+    >{}
+);
+
+
+} // namespace pie

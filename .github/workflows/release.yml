@@ -26,11 +26,11 @@ jobs:
 
       - name: Install compiler (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt update && sudo apt install -y g++-14
+        run: sudo apt update && sudo apt install -y g++-14 && sudo apt install libffi-dev
 
       - name: Install compiler (macOS)
         if: startsWith(matrix.os, 'macos')
-        run: brew install llvm
+        run: brew install llvm && brew install libffi
 
       - name: Build
         run: |

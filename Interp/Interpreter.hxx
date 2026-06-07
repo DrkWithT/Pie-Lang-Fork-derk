@@ -1,11 +1,11 @@
 #pragma once
 
 #include <memory>
-#include <numeric>
 #include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
+#include <deque>
 #include <unordered_map>
 #include <ranges>
 #include <algorithm>
@@ -14,14 +14,18 @@
 #include <utility>
 
 
-#include <cmath>
+// #include <cmath>
 #include <cctype>
 #include <cassert>
+#include <dlfcn.h>
 
 #include <stdx/tuple.hpp>
+#include <ffi.h>
 
 
-// #include "../Declarations.hxx"
+#include "BuiltinFunctions.hxx"
+#include "FFI.hxx"
+
 #include "../Utils/utils.hxx"
 #include "../Utils/Exceptions.hxx"
 #include "../Utils/ConstexprLookup.hxx"
@@ -2228,8 +2232,14 @@ public:
 
         auto var = std::visit(*this, call->func->variant());
         if (std::holds_alternative<value::BuiltinFunction>(var)) { // that dumb lol. but now it works
-            const auto& name = get<value::BuiltinFunction>(var).func_name;
-            if (isBuiltin(name)) return evaluateBuiltin(std::move(args), std::move(expand_at), call->named_args, name);
+
+            // if (isBuiltin(name))
+            return evaluateBuiltin(
+                std::move(args),
+                std::move(expand_at),
+                std::move(call)->named_args,
+                std::move(get<value::BuiltinFunction>(var))
+            );
         }
 
 
@@ -3022,22 +3032,48 @@ public:
 
         // I woulda used a range for-loop but I need `arg` to be a reference and `value` cannot be a regular ref
         // const auto& [arg, value] : std::views::zip(call->args, obj->members)
-        for (size_t i{}; i < call->args.size(); ++i) {
-            const auto& v = std::visit(*this, call->args[i]->variant());
-            const auto& [name, type, _] = cls->blueprint->fields[i];
 
-            typeCheck(v, type,
-                "Type mis-match in constructor of:\n" + value::stringify(type) + "\nMember `" +
-                name.stringify() + "` expected: " + type->text() + "\n"
-                "but got: " + call->args[i]->stringify() + " which is " + typeOf(v)->text()
-            );
+        size_t field_idx{};
+        for (const auto& arg : call->args) {
+
+            if (const auto expand = dynamic_cast<const expr::Expansion*>(arg.get())) {
+                const auto pack = std::visit(*this, expand->pack->variant());
+
+                if (not std::holds_alternative<value::PackList>(pack))
+                    util::error("Expansion applied on a non-pack variable: " + arg->stringify());
 
 
+                for (const auto& v : get<value::PackList>(pack)->values) {
+                    auto& [name, type, _] = cls->blueprint->fields[field_idx++];
+                    type = validateType(type);
 
-            obj.second->members.push_back({name, type, std::make_shared<value::Value>(v)});
+                    typeCheck(v, type,
+                        "Type mis-match in constructor of:\n" + value::stringify(type) + "\nMember `" +
+                        name.stringify() + "` expected: " + type->text() + "\n"
+                        "but got: " + arg->stringify() + " which is " + typeOf(v)->text()
+                    );
+
+                    obj.second->members.push_back({name, type, std::make_shared<value::Value>(v)});
+                }
+            }
+            else {
+                const auto& v = std::visit(*this, std::move(arg)->variant());
+                auto& [name, type, _] = cls->blueprint->fields[field_idx++];
+
+
+                auto new_type = validateType(type); // is this.....fine??
+
+                typeCheck(v, new_type,
+                    "Type mis-match in constructor of:\n" + value::stringify(new_type) + "\nMember `" +
+                    name.stringify() + "` expected: " + new_type->text() + "\n"
+                    "but got: " + arg->stringify() + " which is " + typeOf(v)->text()
+                );
+
+                obj.second->members.push_back({name, new_type, std::make_shared<value::Value>(v)});
+            }
         }
 
-        initializeRestOfMembers(obj, cls->blueprint->fields, call->args.size());
+        initializeRestOfMembers(obj, cls->blueprint->fields, field_idx);
 
         return obj;
     }
@@ -3228,11 +3264,35 @@ public:
             "conditional",
 
             //* quaternary 
-            "str_slice", // (str, start, end, step), should I add anothee overload for (str, start, length)??
+            "str_slice", // (str, start, end, step), should I add another overload for (str, start, length)??
 
 
-            // //* File IO
-            // "read_whole", "read_line", "read_lines"
+            //* File IO
+            // "read_whole", "read_line", "read_lines",
+
+
+            //* FFI shit
+            "dlopen",
+            "dlsym" ,
+            "ffi_call"  ,
+
+            "ffi_type_void"   ,
+            "ffi_type_int"    ,
+            "ffi_type_float"  ,
+            "ffi_type_double" ,
+            "ffi_type_uint8"  ,
+            "ffi_type_sint8"  ,
+            "ffi_type_uint16" ,
+            "ffi_type_sint16" ,
+            "ffi_type_uint32" ,
+            "ffi_type_sint32" ,
+            "ffi_type_uint64" ,
+            "ffi_type_sint64" ,
+            "ffi_type_struct" ,
+            "ffi_type_pointer",
+            "ffi_type_complex",
+            "ffi_type_uint128",
+            "ffi_type_sint128",
         })
             if (make_builtin(builtin) == func) return true;
 
@@ -3242,406 +3302,64 @@ public:
 
     // the gate into the META operators!
     value::Value evaluateBuiltin(
-        const std::vector<expr::ExprPtr> args,
-        const std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at,
-        const std::unordered_map<std::string, expr::ExprPtr>& named_args,
-        std::string name
+        std::vector<expr::ExprPtr> args,
+        std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at,
+        std::unordered_map<std::string, expr::ExprPtr> named_args,
+        value::BuiltinFunction func
     ) {
-        //* ============================ FUNCTIONS ============================
-        static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
-            //* NULLARY FUNCTIONS
-            MapEntry<
-                S<"true">,
-                Func<"true",
-                    decltype([](const auto&) { return true; }),
-                    void
-                >
-            >{},
-            MapEntry<
-                S<"false">,
-                Func<"false",
-                    decltype([](const auto&) { return false; }),
-                    void
-                >
-            >{},
-            MapEntry<
-                S<"input_str">,
-                Func<"input_str",
-                    decltype([](const auto&) {
-                        std::string out;
-                        std::getline(std::cin, out);
-                        return out;
-                    }),
-                    void
-                >
-            >{},
-            MapEntry<
-                S<"input_int">,
-                Func<"input_int",
-                    decltype([](const auto&) {
-                        std::string out;
-                        std::getline(std::cin, out);
-                        if (not std::ranges::all_of(out, isdigit)) util::error("'__builtin_input_int' recieved a non-int \"" + out + "\"!");
-
-                        return std::stoll(out);
-                    }),
-                    void
-                >
-            >{},
-
-            //* UNARY FUNCTIONS
-
-            MapEntry<
-                S<"len">,
-                Func<"len",
-                    decltype([](const auto& x, const auto&) {
-                        if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, std::string>)
-                             return static_cast<BigInt>(x.length());
-
-                        else if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, value::PackList>)
-                            return static_cast<BigInt>(x->values.size());
-
-                        else if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, value::ListValue>)
-                            return static_cast<BigInt>(x.elts->values.size());
-
-                        else // map value
-                            return static_cast<BigInt>(x.items->map.size());
-                    }),
-                    TypeList<std::string>,
-                    TypeList<value::PackList>,
-                    TypeList<value::ListValue>,
-                    TypeList<value::MapValue>
-                >
-            >{},
-
-            MapEntry<
-                S<"type_of">,
-                Func<"type_of",
-                    decltype([](const auto& x, const auto& that) {
-                        return that->typeOf(x);
-                    }),
-                    TypeList<Any>
-                >
-            >{},
-
-            MapEntry<
-                S<"neg">,
-                Func<"neg",
-                    decltype([](const auto& x, const auto&) { return -x; }),
-                    TypeList<BigInt>,
-                    TypeList<double>
-                >
-            >{},
-
-            MapEntry<
-                S<"abs">,
-                Func<"abs",
-                    decltype([](const auto& x, const auto&) { return std::abs(x); }),
-                    TypeList<BigInt>,
-                    TypeList<double>
-                >
-            >{},
-
-            MapEntry<
-                S<"not">,
-                Func<"not",
-                    decltype([](const auto& x, const auto&) { return not x; }),
-                    TypeList<bool>
-                >
-            >{},
-
-            MapEntry<
-                S<"to_int">,
-                Func<"to_int",
-                    decltype([](const auto& x, const auto&) -> BigInt {
-                        if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, std::string>)
-                            return std::stoll(x);
-
-                        // if constexpr (
-                        //     std::is_same_v<std::remove_cvref_t<decltype(x)>, BigInt> or
-                        //     std::is_same_v<std::remove_cvref_t<decltype(x)>, double> or
-                        //     std::is_same_v<std::remove_cvref_t<decltype(x)>, bool>
-                        // )
-                        else return x;
-                    }),
-                    TypeList<BigInt>,
-                    TypeList<double>,
-                    TypeList<bool>,
-                    TypeList<std::string>
-                >
-            >{},
-
-            MapEntry<
-                S<"to_double">,
-                Func<"to_double",
-                    decltype([](const auto& x, const auto&) -> double {
-                        if constexpr (std::is_same_v<std::remove_cvref_t<decltype(x)>, std::string>)
-                            return std::stod(x);
-
-                        // if constexpr (
-                        //     std::is_same_v<std::remove_cvref_t<decltype(x)>, BigInt> or
-                        //     std::is_same_v<std::remove_cvref_t<decltype(x)>, double> or
-                        //     std::is_same_v<std::remove_cvref_t<decltype(x)>, bool>
-                        // )
-                        else return x;
-                    }),
-                    TypeList<BigInt>,
-                    TypeList<double>,
-                    TypeList<bool>,
-                    TypeList<std::string>
-                >
-            >{},
-
-            MapEntry<
-                S<"to_string">,
-                Func<"to_string",
-                    decltype([](const auto& x, const auto&) { return stringify(x); }),
-                    TypeList<Any>
-                >
-            >{},
-
-            MapEntry<
-                S<"eval">,
-                Func<"eval",
-                    decltype([](const auto& x, const auto& that) {
-                        return std::visit(*that, x);
-                    }),
-                    TypeList<expr::Node>
-                >
-            >{},
-
-            MapEntry<
-                S<"pop">,
-                Func<"pop",
-                    decltype([](const auto& cont, const auto&) -> value::Value {
-                        const auto back = cont.elts->values.back();
-                        cont.elts->values.pop_back();
-                        return back;
-                    }),
-                    TypeList<value::ListValue>
-                >
-            >{},
-
-
-            //* BINARY FUNCTIONS
-            MapEntry<
-                S<"get">,
-                Func<"get",
-                    decltype([](const auto& a, const auto& ind, const auto&) -> value::Value {
-                        using T = std::remove_cvref_t<decltype(a)>;
-
-                        if constexpr (std::is_same_v<T, value::ListValue>) {
-                            if (ind < 0 or size_t(ind) >= a.elts->values.size())
-                                util::error("Accessing list '" + stringify(a) + "' at index '" + std::to_string(ind) + "' which is out of bounds!");
-
-                            return a.elts->values[ind]; 
-                        }
-
-                        else if constexpr (std::is_same_v<T, value::MapValue>) {
-                            auto key = stringify(ind);
-                            if (not a.items->map.contains(key))
-                                util::error("Accessing Map '" + stringify(a) + "' at key '" + key + "' which doesn't exist!");
-
-                            return a.items->map.at(key);
-                        }
-
-                        else { // if constexpr (std::is_same_v<std::remove_cvref_t<decltype(a)>, std::string>) {
-                            if (ind < 0 or size_t(ind) >= a.length())
-                                util::error("Accessing string '" + a + "' at index '" + std::to_string(ind) + "' which is out of bounds!");
-                            return std::string{a[ind]};
-                        }
-                    }),
-                    TypeList<value::ListValue, BigInt>,
-                    TypeList<value::MapValue, Any>,
-                    TypeList<std::string, BigInt>
-                >
-            >{},
-
-            MapEntry<
-                S<"set">,
-                Func<"set",
-                    decltype([](const auto& cont, const auto& at, const auto& elt, const auto&) -> value::Value {
-                        using T = std::remove_cvref_t<decltype(cont)>;
-
-                        if constexpr (std::is_same_v<T, value::ListValue>) {
-                            if (at < 0 or size_t(at) >= cont.elts->values.size())
-                                util::error("Accessing list '" + stringify(cont) + "' at index '" + std::to_string(at) + "' which is out of bounds!");
-
-                            return cont.elts->values[at] = elt;
-                        }
-
-                        else if constexpr (std::is_same_v<T, value::MapValue>) {
-                            auto key = stringify(at);
-                            return cont.items->map[key] = elt;
-                        }
-                    }),
-                    TypeList<value::ListValue, BigInt, Any>,
-                    TypeList<value::MapValue, Any, Any>
-                    // TypeList<std::string, BigInt>
-                >
-            >{},
-
-            MapEntry<
-                S<"push">,
-                Func<"push",
-                    decltype([](const auto& cont, const auto& elt, const auto&) -> value::Value {
-                        cont.elts->values.push_back(elt);
-                        return elt;
-                    }),
-                    TypeList<value::ListValue, Any>
-                >
-            >{},
-
-            MapEntry<
-                S<"add">,
-                Func<"add",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a + b; }),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{},
-
-            MapEntry<
-                S<"sub">,
-                Func<"sub",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a - b; }),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{},
-
-            MapEntry<
-                S<"mul">,
-                Func<"mul",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a * b; }),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{},
-
-            MapEntry<
-                S<"div">,
-                Func<"div",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a / b; }),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{},
-
-            MapEntry<
-                S<"mod">,
-                Func<"mod",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a % b; }),
-                    TypeList<BigInt, BigInt>
-                >
-            >{},
-
-            MapEntry<
-                S<"bit_and">,
-                Func<"bit_and",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a & b; }),
-                    TypeList<BigInt, BigInt>
-                >
-            >{},
-
-            MapEntry<
-                S<"bit_or">,
-                Func<"bit_or",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a | b; }),
-                    TypeList<BigInt, BigInt>
-                >
-            >{},
-
-            MapEntry<
-                S<"xor">,
-                Func<"xor",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a ^ b; }),
-                    TypeList<BigInt, BigInt>
-                >
-            >{},
-
-            MapEntry<
-                S<"pow">,
-                Func<"pow",
-                    decltype(
-                        [](const auto& a, const auto& b, const auto&) -> std::common_type_t<decltype(a), decltype(b)> { return std::pow(a, b); }
-                    ),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{},
-
-            MapEntry<
-                S<"gt">,
-                Func<"gt",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a > b; }),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{},
-
-            MapEntry<
-                S<"geq">,
-                Func<"geq",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a >= b; }),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{},
-
-            MapEntry<
-                S<"eq">,
-                Func<"eq",
-                    decltype([](auto a, auto b, const auto&) { return a == b; }),
-                    TypeList<Any, Any>
-                >
-            >{},
-
-            MapEntry<
-                S<"leq">,
-                Func<"leq",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a <= b; }),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{},
-
-            MapEntry<
-                S<"lt">,
-                Func<"lt",
-                    decltype([](const auto& a, const auto& b, const auto&) { return a < b; }),
-                    TypeList<BigInt, BigInt>,
-                    TypeList<BigInt, double>,
-                    TypeList<double, BigInt>,
-                    TypeList<double, double>
-                >
-            >{}
-        );
-
-
-
-        name = name.substr(10); // cutout the "__builtin_"
+        auto name = std::move(func).func_name.substr(10); // cutout the "__builtin_"
 
         const auto arity_check = [&name, &args] (const size_t arity) {
             if (args.size() != arity) util::error("Wrong arity with call to \"__builtin_" + name + "\"");
         };
 
+
+        using std::operator""sv;
+
+        const auto nullary_funcs = {
+            "input_str"sv       ,
+            "input_int"sv       ,
+            "ffi_type_void"sv   ,
+            "ffi_type_int"sv    ,
+            "ffi_type_float"sv  ,
+            "ffi_type_double"sv ,
+            "ffi_type_uint8"sv  ,
+            "ffi_type_sint8"sv  ,
+            "ffi_type_uint16"sv ,
+            "ffi_type_sint16"sv ,
+            "ffi_type_uint32"sv ,
+            "ffi_type_sint32"sv ,
+            "ffi_type_uint64"sv ,
+            "ffi_type_sint64"sv ,
+            "ffi_type_struct"sv ,
+            "ffi_type_pointer"sv,
+            "ffi_type_complex"sv,
+            "ffi_type_uint128"sv,
+            "ffi_type_sint128"sv,
+        };
+
+        if (std::ranges::find(nullary_funcs, name) != nullary_funcs.end()) {
+            arity_check(0);
+            if (name == "input_str"       ) return execute<0>(stdx::get<S<"input_str"       >>(functions).value, {}, this);
+            if (name == "input_int"       ) return execute<0>(stdx::get<S<"input_int"       >>(functions).value, {}, this);
+            if (name == "ffi_type_int"    ) return execute<0>(stdx::get<S<"ffi_type_int"    >>(functions).value, {}, this);
+            if (name == "ffi_type_pointer") return execute<0>(stdx::get<S<"ffi_type_pointer">>(functions).value, {}, this);
+            if (name == "ffi_type_void"   ) return execute<0>(stdx::get<S<"ffi_type_void"   >>(functions).value, {}, this);
+            if (name == "ffi_type_float"  ) return execute<0>(stdx::get<S<"ffi_type_float"  >>(functions).value, {}, this);
+            if (name == "ffi_type_double" ) return execute<0>(stdx::get<S<"ffi_type_double" >>(functions).value, {}, this);
+            if (name == "ffi_type_uint8"  ) return execute<0>(stdx::get<S<"ffi_type_uint8"  >>(functions).value, {}, this);
+            if (name == "ffi_type_sint8"  ) return execute<0>(stdx::get<S<"ffi_type_sint8"  >>(functions).value, {}, this);
+            if (name == "ffi_type_uint16" ) return execute<0>(stdx::get<S<"ffi_type_uint16" >>(functions).value, {}, this);
+            if (name == "ffi_type_sint16" ) return execute<0>(stdx::get<S<"ffi_type_sint16" >>(functions).value, {}, this);
+            if (name == "ffi_type_uint32" ) return execute<0>(stdx::get<S<"ffi_type_uint32" >>(functions).value, {}, this);
+            if (name == "ffi_type_sint32" ) return execute<0>(stdx::get<S<"ffi_type_sint32" >>(functions).value, {}, this);
+            if (name == "ffi_type_uint64" ) return execute<0>(stdx::get<S<"ffi_type_uint64" >>(functions).value, {}, this);
+            if (name == "ffi_type_sint64" ) return execute<0>(stdx::get<S<"ffi_type_sint64" >>(functions).value, {}, this);
+            if (name == "ffi_type_struct" ) return execute<0>(stdx::get<S<"ffi_type_struct" >>(functions).value, {}, this);
+            if (name == "ffi_type_complex") return execute<0>(stdx::get<S<"ffi_type_complex">>(functions).value, {}, this);
+            if (name == "ffi_type_uint128") return execute<0>(stdx::get<S<"ffi_type_uint128">>(functions).value, {}, this);
+            if (name == "ffi_type_sint128") return execute<0>(stdx::get<S<"ffi_type_sint128">>(functions).value, {}, this);
+        }
 
         if (name == "panic") {
             for (const auto& arg : args) {
@@ -3669,15 +3387,6 @@ public:
             return 0;
         }
 
-        if (name == "input_str") {
-            arity_check(0);
-            return execute<0>(stdx::get<S<"input_str">>(functions).value, {}, this);
-        }
-
-        if (name == "input_int") {
-            arity_check(0);
-            return execute<0>(stdx::get<S<"input_int">>(functions).value, {}, this);
-        }
 
 
 
@@ -3697,26 +3406,36 @@ public:
         */
         // would be nice if the system above could be done for member functions on premitive types (Int, Double, String, etc...)
         if (name == "print") {
-            return builtinPrint(args, expand_at, named_args);
+            return builtinPrint(std::move(args), std::move(expand_at), std::move(named_args));
         }
 
         if (name == "concat") {
-            if (args.size() < 2) util::error("'concat' requires at least 2 argument passed!");
+            return builtinConcat(std::move(args));
+        }
 
-            std::string s;
-            for(const auto& arg : args) {
-                const value::Value& v = std::visit(*this, arg->variant());
-                if (not std::holds_alternative<std::string>(v)) util::error("'concat' only accepts strings as arguments: " + stringify(v));
 
-                s += get<std::string>(v);
-            }
-
-            return s;
+        if (name == "ffi_call") {
+            return ffiCall(std::move(args), std::move(expand_at));
         }
 
 
 
-        if (name == "neg" or name == "abs" or name == "not" or name == "reset") arity_check(1); // just for now..
+
+        const auto unary_funcs = {
+            "type_of"  ,
+            "len"      ,
+            "eval"     ,
+            "abs"      ,
+            "neg"      ,
+            "not"      ,
+            "pop"      ,
+            "to_int"   ,
+            "to_double",
+            "to_string",
+            "dlopen"   ,
+        };
+
+        if (std::ranges::find(unary_funcs, name) != unary_funcs.end()) arity_check(1); // just for now..
 
 
         // evaluating arguments from left to right as needed
@@ -3729,10 +3448,8 @@ public:
             if (const auto& v = getVar(args[0]->ID); not v) util::error("Reseting an unset value: " + args[0]->stringify());
             else removeVar(args[0]->ID);
 
-            // return to_bigint(num->num);
             return value1;
         }
-
 
 
         if (name == "type_of"  ) return execute<1>(stdx::get<S<"type_of"   >>(functions).value, {value1}, this);
@@ -3745,10 +3462,9 @@ public:
         if (name == "to_int"   ) return execute<1>(stdx::get<S<"to_int"    >>(functions).value, {value1}, this);
         if (name == "to_double") return execute<1>(stdx::get<S<"to_double" >>(functions).value, {value1}, this);
         if (name == "to_string") return execute<1>(stdx::get<S<"to_string" >>(functions).value, {value1}, this);
-
+        if (name == "dlopen"   ) return execute<1>(stdx::get<S<"dlopen"    >>(functions).value, {value1}, this);
 
         // all the rest of those funcs expect 2 arguments
-        using std::operator""sv;
 
         const auto eager = {
             "get"sv,
@@ -3766,7 +3482,8 @@ public:
             "geq"sv,
             "eq"sv,
             "leq"sv,
-            "lt"sv
+            "lt"sv,
+            "dlsym"sv
         };
 
         if (std::ranges::find(eager, name) != eager.end()) {
@@ -3791,6 +3508,7 @@ public:
             if (name == "eq"     ) return execute<2>(stdx::get<S<"eq"     >>(functions).value, {value1, value2}, this);
             if (name == "leq"    ) return execute<2>(stdx::get<S<"leq"    >>(functions).value, {value1, value2}, this);
             if (name == "lt"     ) return execute<2>(stdx::get<S<"lt"     >>(functions).value, {value1, value2}, this);
+            if (name == "dlsym"  ) return execute<2>(stdx::get<S<"dlsym"  >>(functions).value, {value1, value2}, this);
 
             util::error();
         }
@@ -3875,9 +3593,9 @@ public:
 
 
     value::Value builtinPrint(
-        const std::vector<expr::ExprPtr>& args,
-        const std::vector<std::pair<size_t, std::vector<value::Value>>>& expand_at,
-        const std::unordered_map<std::string, expr::ExprPtr>& named_args
+        std::vector<expr::ExprPtr> args,
+        std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at,
+        std::unordered_map<std::string, expr::ExprPtr> named_args
     ) {
         if (args.empty()) util::error("'print' requires at least 1 positional argument passed!");
 
@@ -3920,6 +3638,197 @@ public:
         else puts(""); // print the new line in the end.
 
         return ret;
+    }
+
+
+    value::Value builtinConcat(std::vector<expr::ExprPtr> args) {
+        if (args.size() < 2) util::error("'concat' requires at least 2 argument passed!");
+
+        std::string s;
+        for(const auto& arg : args) {
+            const value::Value& v = std::visit(*this, arg->variant());
+            if (not std::holds_alternative<std::string>(v)) util::error("'concat' only accepts strings as arguments: " + stringify(v));
+
+            s += get<std::string>(v);
+        }
+
+        return s;
+    }
+
+
+    value::Value ffiCall(
+        std::vector<expr::ExprPtr>(args),
+        [[maybe_unused]] std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at
+    ) {
+        if (args.size() < 2) util::error("`__builtin_call` requires the symbol name and the CIF!");
+
+        const auto sym = reinterpret_cast<void*>(get<BigInt>(std::visit(*this, args[0]->variant())));
+        const auto pie_cif = get<value::Object>(std::visit(*this, args[1]->variant()));
+
+        ffi_type* return_type;
+        BigInt r_type;
+
+        const auto args_size = args.size() - 2;
+        std::vector<ffi_type*> param_types;
+        param_types.reserve(args_size);
+
+        std::vector<value::Value> values;
+        values.reserve(args_size);
+
+        std::deque<void*> pointer_values;
+
+        std::vector<void*> values_pointers;
+        values_pointers.reserve(args_size);
+
+        std::vector<std::vector<void*>> struct_values;
+        struct_values.reserve(args_size);
+
+        std::deque<std::vector<std::byte>> payloads;
+
+
+        // look for `param_types` and `return_types`
+        bool found_params{}, found_return{};
+        for (const auto& [name, _, value_ptr] : pie_cif.second->members) {
+            if (name.name == "param_types") {
+                found_params = true;
+
+                if (not std::holds_alternative<value::ListValue>(*value_ptr)) util::error();
+
+
+                const auto& list = get<value::ListValue>(*value_ptr);
+                if (list.elts->values.size() != args.size() - 2) // `-2` to exclude the sym and cif
+                    util::error();
+
+                for (
+                    const auto& [type, arg] :
+                    std::views::zip(list.elts->values, args | std::views::drop(2))
+                ) {
+                    // if (curr < expand_at.size() and i++ == expand_at[curr].first) {
+                    // for (const auto& e : expand_at[curr++].second) {
+
+                    if (not std::holds_alternative<BigInt>(type))
+                        util::error("Invalid C Type: " + value::stringify(type));
+
+                    const auto type_id = get<BigInt>(type);
+
+                    if (type_id < 0 or type_id > FFI_TYPE_LAST)
+                        util::error("Invalid C Type: " + std::to_string(type_id));
+
+
+                    switch (type_id) {
+                        case FFI_TYPE_INT: {
+                            param_types.push_back(&ffi_type_sint32);
+                            values.push_back(std::visit(*this, arg->variant()));
+                            if (not std::holds_alternative<BigInt>(values.back())) util::error();
+
+                            values_pointers.push_back(&get<BigInt>(values.back()));
+
+                        } break;
+
+                        case FFI_TYPE_POINTER: {
+                            param_types.push_back(&ffi_type_pointer);
+                            values.push_back(std::visit(*this, arg->variant()));
+                            if (not std::holds_alternative<std::string>(values.back())) util::error();
+
+                            pointer_values .push_back(get<std::string>(values.back()).data());
+                            values_pointers.push_back(&pointer_values.back());
+
+                        } break;
+
+                        case FFI_TYPE_STRUCT: {
+
+                            const auto ffi = ffi::prepareFFI(visit(*this, arg->variant()), type_id);
+                            param_types.push_back(ffi->type);
+
+                            payloads.emplace_back(ffi->type->size);
+
+                            auto payload = payloads.back().data();
+
+                            ffi::pack(payload, ffi);
+
+                            // pointer_values.push_back();
+                            values_pointers.push_back(payload);
+
+                        } break;
+
+                        default:
+                            util::error();
+                    }
+                }
+            }
+            else if (name.name == "return_type") {
+                found_return = true;
+
+                const auto type = *value_ptr;
+                if (not std::holds_alternative<BigInt>(type)) util::error();
+
+
+                switch (r_type = get<BigInt>(type)) {
+                    case FFI_TYPE_INT    : return_type = &ffi_type_sint32 ; break;
+                    case FFI_TYPE_POINTER: return_type = &ffi_type_pointer; break;
+                    case FFI_TYPE_VOID   : return_type = &ffi_type_void   ; break;
+
+                    default:
+                        util::error();
+                }
+
+            }
+        }
+
+        if (not found_params or not found_return) util::error();
+
+        ffi_cif cif{};
+        const auto result = ffi_prep_cif(
+            &cif,
+            FFI_DEFAULT_ABI,
+            values_pointers.size(),
+            return_type,
+            param_types.data()
+        );
+
+
+        if (result != FFI_OK) util::error();
+
+
+        value::Value ret_value;
+        switch (r_type) {
+            case FFI_TYPE_INT: {
+                BigInt return_value;
+                ffi_call(
+                    &cif,
+                    reinterpret_cast<void(*)()>(sym),
+                    &return_value,
+                    values_pointers.data()
+                );
+                ret_value = return_value;
+            } break;
+
+            case FFI_TYPE_POINTER: {
+                char *return_value;
+                ffi_call(
+                    &cif,
+                    reinterpret_cast<void(*)()>(sym),
+                    &return_value,
+                    values_pointers.data()
+                );
+
+                ret_value = std::string{return_value};
+            } break;
+
+            case FFI_TYPE_VOID: {
+                ffi_call(
+                    &cif,
+                    reinterpret_cast<void(*)()>(sym),
+                    nullptr,
+                    values_pointers.data()
+                );
+            }
+
+            default: // not gonna happend. Already checked up there
+                ret_value = 0;
+        }
+
+        return ret_value;
     }
 
 
@@ -4157,7 +4066,7 @@ public:
             // return type::MapOf(type::UnionOf(std::move(keys)), type::UnionOf(std::move(values)));
         }
 
-        // if (std::holds_alternative<NameSpace>(value)) return std::make_shared<type::SpaceType>();
+        // if (std::holds_alternative<value::Pointer>(value)) return type::builtins::Int();
 
 
         util::error("Unknown Type for value: " + stringify(value));

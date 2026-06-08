@@ -13,18 +13,18 @@ namespace ffi {
 class FFI {
 public:
 
-    union {
-        struct {
+    union Memory {
+        struct Single {
             value::Value  *value ;
             void *ptr;
         } single;
 
-        struct {
+        struct Multi {
             value::Value* *values;
             FFI* *nested;
             size_t n;
         } multi;
-    };
+    } mem;
 
 
     ffi_type *type;
@@ -40,13 +40,13 @@ public:
 
         if (isStruct()) {
             std::clog << dent << "struct: " << std::endl;
-            for (size_t i{}; i < multi.n; ++i) {
-                std::clog << dent << "value: " << value::stringify(*multi.values[i]) << std::endl;
-                (*multi.nested)->print(indent + 4);
+            for (size_t i{}; i < mem.multi.n; ++i) {
+                std::clog << dent << "value: " << value::stringify(*mem.multi.values[i]) << std::endl;
+                (*mem.multi.nested)->print(indent + 4);
             }
         }
         else {
-            std::clog << dent << "regular value: " << value::stringify(*single.value) << std::endl;
+            std::clog << dent << "regular value: " << value::stringify(*mem.single.value) << std::endl;
         }
     }
 };
@@ -94,7 +94,7 @@ inline FFI* prepareFFI(const value::Value& value, const BigInt type_id) {
             const size_t size = c_types.size();
             const auto types = new ffi_type*[size + 1];
             types[size] = nullptr;
-            auto ret = new FFI{.multi = {new value::Value*[size], new ffi::FFI*[size], size}};
+            auto ret = new FFI{.mem = {.multi = {new value::Value*[size], new ffi::FFI*[size], size}}};
 
             // zip shortens the members list to the type list length.
             // this intended to allow the user to attach methods and other members to the Pie class
@@ -104,8 +104,8 @@ inline FFI* prepareFFI(const value::Value& value, const BigInt type_id) {
                 auto ffi = prepareFFI(*value_ptr, id);
 
                 types[i] = ffi->type;
-                ret->multi.nested[i] = ffi;
-                ret->multi.values[i] = ffi->single.value;
+                ret->mem.multi.nested[i] = ffi;
+                ret->mem.multi.values[i] = ffi->mem.single.value;
 
 
                 ++i;
@@ -139,8 +139,8 @@ inline void pack(std::byte *buffer, const FFI *ffi) {
         size_t offset[256];
         ffi_get_struct_offsets(FFI_DEFAULT_ABI, ffi->type, offset);
 
-        for (size_t i = 0; i < ffi->multi.n; ++i) {
-            pack(buffer + offset[i], ffi->multi.nested[i]);
+        for (size_t i = 0; i < ffi->mem.multi.n; ++i) {
+            pack(buffer + offset[i], ffi->mem.multi.nested[i]);
         }
 
         return;
@@ -149,11 +149,11 @@ inline void pack(std::byte *buffer, const FFI *ffi) {
     switch (ffi->type->type) {
         case FFI_TYPE_SINT32:
         case FFI_TYPE_INT:
-            *reinterpret_cast<int*>(buffer) = static_cast<int>(get<BigInt>(*ffi->single.value));
+            *reinterpret_cast<int*>(buffer) = static_cast<int>(get<BigInt>(*ffi->mem.single.value));
             return;
 
         case FFI_TYPE_POINTER:
-            *reinterpret_cast<char**>(buffer) = get<std::string>(*ffi->single.value).data();
+            *reinterpret_cast<char**>(buffer) = get<std::string>(*ffi->mem.single.value).data();
             return;
     }
 }
@@ -162,17 +162,17 @@ inline void pack(std::byte *buffer, const FFI *ffi) {
 
 inline void destroy(const FFI *ffi) {
     if (ffi->isStruct()) {
-        delete[] ffi->multi.values;
+        delete[] ffi->mem.multi.values;
 
-        for (size_t i{}; i < ffi->multi.n; ++i)
-            destroy(ffi->multi.nested[i]);
-        delete[] ffi->multi.nested;
+        for (size_t i{}; i < ffi->mem.multi.n; ++i)
+            destroy(ffi->mem.multi.nested[i]);
+        delete[] ffi->mem.multi.nested;
 
         delete[] ffi->type->elements;
         delete ffi->type;
     }
     else {
-        delete ffi->single.value;
+        delete ffi->mem.single.value;
         // delete ffi->single.ptr;
         // .ptr is referencing the internal data inside .value
         // so it should be deleted when value is deleted

@@ -35,7 +35,7 @@ INCLUDE = \
 	-I$(MP11_DIR)/include/       \
 	-I$(CPP_STD_EXT_DIR)/include/ \
 	-I$(LIB_FFI_DIR)/include/	   \
-	-L/usr/local/lib -lffi
+	-lffi 							\
 
 
 # Main target
@@ -65,11 +65,6 @@ checklibs:
         echo "Cloning cpp-std-extensions...";\
         git clone https://github.com/intel/cpp-std-extensions $(CPP_STD_EXT_DIR); \
 	fi
-	@if [ ! -d "$(LIB_FFI_DIR)" ]; then \
-        echo "Cloning libffi..."; \
-        git clone https://github.com/libffi/libffi.git $(LIB_FFI_DIR); \
-	fi
-
 
 clean:
 	rm -f $(OUTPUT_NAME) run_tests && rm -rf remote_includes/*

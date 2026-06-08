@@ -541,9 +541,9 @@ static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
             decltype([](const auto&) { return FFI_TYPE_COMPLEX; }),
             void
         >
-    >{},
+    >{}
 
-    // MapEntry<
+    // ,MapEntry<
     //     S<"ffi_type_uint128">,
     //     Func<"ffi_type_int",
     //         decltype([](const auto&) { return FFI_TYPE_UINT128; }),

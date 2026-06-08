@@ -122,7 +122,7 @@ public:
             //* FFI shit
             "__builtin_dlopen"          ,
             "__builtin_dlsym"           ,
-            "__builtin_ffi_call"            ,
+            "__builtin_ffi_call"        ,
             "__builtin_ffi_type_void"   ,
             "__builtin_ffi_type_int"    ,
             "__builtin_ffi_type_float"  ,
@@ -138,8 +138,6 @@ public:
             "__builtin_ffi_type_struct" ,
             "__builtin_ffi_type_pointer",
             "__builtin_ffi_type_complex",
-            "__builtin_ffi_type_uint128",
-            "__builtin_ffi_type_sint128",
         };
 
 

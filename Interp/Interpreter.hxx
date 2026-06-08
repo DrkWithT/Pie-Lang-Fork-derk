@@ -3291,8 +3291,6 @@ public:
             "ffi_type_struct" ,
             "ffi_type_pointer",
             "ffi_type_complex",
-            "ffi_type_uint128",
-            "ffi_type_sint128",
         })
             if (make_builtin(builtin) == func) return true;
 
@@ -3334,8 +3332,6 @@ public:
             "ffi_type_struct"sv ,
             "ffi_type_pointer"sv,
             "ffi_type_complex"sv,
-            "ffi_type_uint128"sv,
-            "ffi_type_sint128"sv,
         };
 
         if (std::ranges::find(nullary_funcs, name) != nullary_funcs.end()) {
@@ -3357,8 +3353,6 @@ public:
             if (name == "ffi_type_sint64" ) return execute<0>(stdx::get<S<"ffi_type_sint64" >>(functions).value, {}, this);
             if (name == "ffi_type_struct" ) return execute<0>(stdx::get<S<"ffi_type_struct" >>(functions).value, {}, this);
             if (name == "ffi_type_complex") return execute<0>(stdx::get<S<"ffi_type_complex">>(functions).value, {}, this);
-            if (name == "ffi_type_uint128") return execute<0>(stdx::get<S<"ffi_type_uint128">>(functions).value, {}, this);
-            if (name == "ffi_type_sint128") return execute<0>(stdx::get<S<"ffi_type_sint128">>(functions).value, {}, this);
         }
 
         if (name == "panic") {

@@ -543,21 +543,21 @@ static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
         >
     >{},
 
-    MapEntry<
-        S<"ffi_type_uint128">,
-        Func<"ffi_type_int",
-            decltype([](const auto&) { return FFI_TYPE_UINT128; }),
-            void
-        >
-    >{},
+    // MapEntry<
+    //     S<"ffi_type_uint128">,
+    //     Func<"ffi_type_int",
+    //         decltype([](const auto&) { return FFI_TYPE_UINT128; }),
+    //         void
+    //     >
+    // >{},
 
-    MapEntry<
-        S<"ffi_type_sint128">,
-        Func<"ffi_type_int",
-            decltype([](const auto&) { return FFI_TYPE_SINT128; }),
-            void
-        >
-    >{}
+    // MapEntry<
+    //     S<"ffi_type_sint128">,
+    //     Func<"ffi_type_int",
+    //         decltype([](const auto&) { return FFI_TYPE_SINT128; }),
+    //         void
+    //     >
+    // >{}
 );
 
 

@@ -3826,6 +3826,7 @@ public:
                 );
             }
 
+            [[fallthrough]];
             default: // not gonna happend. Already checked up there
                 ret_value = 0;
         }

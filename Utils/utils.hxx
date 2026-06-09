@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <string>
 #include <sstream>
 #include <source_location>
@@ -12,6 +13,17 @@
 
 #include "../Lex/Token.hxx"
 
+
+
+#if defined(__APPLE__) or defined(__MACH__)
+    #include <mach-o/dyld.h>
+#elif defined(_WIN32) or defined(_WIN64)
+    #include <windows.h>
+#elif defined(__linux__)
+    #include <unistd.h>
+#else
+    #error "unkown operating system!"
+#endif
 
 
 inline namespace pie {
@@ -54,6 +66,42 @@ template <typename Except = std::runtime_error, bool print_loc = true>
 
 
 
+inline std::filesystem::path getPiePath() {
+    constexpr auto MAX_PATH_SIZE = 1024;
+    char buffer[MAX_PATH_SIZE];
+
+
+#if defined(__APPLE__) or defined(__MACH__)
+
+    uint32_t size = sizeof(buffer);
+    if (_NSGetExecutablePath(buffer, &size) == 0) {
+        return std::filesystem::canonical(buffer).parent_path(); 
+    }
+
+#elif defined(_WIN32) or defined(_WIN64)
+
+    DWORD length = GetModuleFileNameA(NULL, buffer, MAX_PATH_SIZE); 
+
+    if (length > 0 && length < sizeof(buffer)) {
+        return std::filesystem::path(buffer).parent_path();
+    }
+
+#elif defined(__linux__)
+
+    ssize_t length = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+
+    if (length != -1) {
+        buffer[length] = '\0';
+        return std::filesystem::path(buffer).parent_path();
+    }
+
+#endif
+
+    error();
+}
+
+
+
 template <typename F>
 struct Deferred {
     F f;
@@ -68,10 +116,10 @@ Deferred(F) -> Deferred<F>;
 
 
 
-[[nodiscard]] inline std::string readFile(const std::string& fname, const std::source_location& location = std::source_location::current()) {
+[[nodiscard]] inline std::string readFile(const std::filesystem::path& fname, const std::source_location& location = std::source_location::current()) {
     const std::ifstream fin{fname};
 
-    if (not fin.is_open()) error("File \"" + fname + "\" not found!", location);
+    if (not fin.is_open()) error("File \"" + fname.string() + "\" not found!", location);
 
     std::stringstream ss;
     ss << fin.rdbuf();

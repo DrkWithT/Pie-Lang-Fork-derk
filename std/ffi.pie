@@ -1,0 +1,50 @@
+
+space ffi {
+
+space ctypes {
+    VOID    = __builtin_ffi_type_void   ();
+    INT     = __builtin_ffi_type_int    ();
+    FLOAT   = __builtin_ffi_type_float  ();
+    DOUBLE  = __builtin_ffi_type_double ();
+    UINT8   = __builtin_ffi_type_uint8  ();
+    SINT8   = __builtin_ffi_type_sint8  ();
+    UINT16  = __builtin_ffi_type_uint16 ();
+    SINT16  = __builtin_ffi_type_sint16 ();
+    UINT32  = __builtin_ffi_type_uint32 ();
+    SINT32  = __builtin_ffi_type_sint32 ();
+    UINT64  = __builtin_ffi_type_uint64 ();
+    SINT64  = __builtin_ffi_type_sint64 ();
+    STRUCT  = __builtin_ffi_type_struct ();
+    POINTER = __builtin_ffi_type_pointer();
+    COMPLEX = __builtin_ffi_type_complex();
+    UINT128 = __builtin_ffi_type_uint128();
+    SINT128 = __builtin_ffi_type_sint128();
+};
+
+ctype = union {
+    ctypes::VOID   ;
+    ctypes::INT    ;
+    ctypes::FLOAT  ;
+    ctypes::DOUBLE ;
+    ctypes::UINT8  ;
+    ctypes::SINT8  ;
+    ctypes::UINT16 ;
+    ctypes::SINT16 ;
+    ctypes::UINT32 ;
+    ctypes::SINT32 ;
+    ctypes::UINT64 ;
+    ctypes::SINT64 ;
+    ctypes::STRUCT ;
+    ctypes::POINTER;
+    ctypes::COMPLEX;
+    ctypes::UINT128;
+    ctypes::SINT128;
+};
+
+CIF = class {
+    param_types: {ctype} = {};
+    return_type: ctype = ctype::VOID;
+};
+
+
+}; .: space ffi

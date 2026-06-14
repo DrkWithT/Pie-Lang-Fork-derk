@@ -1,4 +1,5 @@
 #include "Value.hxx"
+#include <string>
 #include <variant>
 
 
@@ -142,7 +143,7 @@ std::string stringify(const Value& value, const size_t indent) {
     // }
 
 
-    else util::error("Type not found!");
+    else util::error("Type not found! Index: " + std::to_string(value.index()));
 
     return s;
 }

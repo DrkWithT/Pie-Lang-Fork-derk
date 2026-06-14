@@ -12,7 +12,7 @@ WEB_ARGS = -sWASM=1 -sFORCE_FILESYSTEM -sEXPORTED_RUNTIME_METHODS='["callMain"]'
 	 -sASSERTIONS -sENVIRONMENT=web -INVOKE_RUN_AT_START=0 -sEXIT_RUNTIME=0 -sNO_DISABLE_EXCEPTION_CATCHING
 
 CPP = Type/*.cxx Value/*.cxx
-SAN = -fsanitize=address -fsanitize=undefined # -g3
+SAN = -fsanitize=undefined -fsanitize=address # -g3
 
 OUTPUT_NAME = Pie
 WEB_OUTPUT_NAME = Pie.js
@@ -47,6 +47,15 @@ debug: checklibs main.cc
 
 test: checklibs Tests/Test.cc
 	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -O0 Tests/Test.cc Tests/catch.cpp -o run_tests $(SAN) -DNO_ERR_LOC && ./run_tests && rm run_tests
+
+
+test_dylib_mac:
+	$(CC) $(VER) -dynamiclib Tests/ffi_test.cpp -o Tests/dylib
+
+
+test_dylib_lnx:
+	$(CC) $(VER) -c -fPIC    Tests/ffi_test.cpp -o Tests/dylib
+
 
 web: checklibs main.cc
 	$(WEBCC) $(CPP) $(WEB_ARGS) $(VER) $(INCLUDE) $(OPT) main.cc -o $(WEB_OUTPUT_NAME) -DWEB_PIE

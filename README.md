@@ -815,12 +815,12 @@ make
 - [ ] Improve error messages (add line and column numbers)
 - [ ] Add recursive operators
 - [ ] Remove dependency on stdx and boost
-- [ ] Compile to WASM & a web interface
 - [ ] Add LLVM backend
 
 ---
 
 ### Done
+- [x] Compile to WASM & a web interface (YAAAY)
 - [x] Remove preprocessor
 - [x] Add `Syntax` literals instead of relying on receiver's type
 - [x] Lexically Scoped Operators

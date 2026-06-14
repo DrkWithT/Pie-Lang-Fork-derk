@@ -20,6 +20,112 @@
 
 
 
+TEST_CASE("Dylib & FFI Calls!", "[FFI][DYLIB]") {
+    const auto src1 = R"(
+V = __builtin_ffi_type_void();
+
+CIF = class {
+    __param_types = {};
+    __return_type = V;
+};
+
+void_cif = CIF();
+
+dylib = __builtin_dlopen("Tests/dylib");
+
+greet_handle = __builtin_dlsym(dylib, "greet");
+
+
+__builtin_ffi_call(greet_handle, void_cif); .: prints "Hello, World!"
+)";
+
+    REQUIRE(pie::test::run(src1) == "Hello, World!");
+
+
+    const auto src2 = R"(
+I = __builtin_ffi_type_int();
+
+CIF = class {
+    __param_types = {};
+    __return_type = 0;
+};
+
+dylib = __builtin_dlopen("Tests/dylib");
+
+add_handle = __builtin_dlsym(dylib, "add");
+
+
+add_cif = CIF({I, I}, I);
+
+x = __builtin_ffi_call(add_handle, add_cif, 1, 2);
+y = __builtin_ffi_call(add_handle, add_cif, 3, 4);
+
+__builtin_print(x, y);
+)";
+
+    REQUIRE(pie::test::run(src2) == "3 7");
+
+
+    const auto src3 = R"(
+V = __builtin_ffi_type_void  ();
+S = __builtin_ffi_type_struct();
+I = __builtin_ffi_type_int   ();
+
+dylib = __builtin_dlopen("Tests/dylib");
+
+printS_handle = __builtin_dlsym(dylib, "printS2");
+
+
+CIF = class {
+    __param_types = {};
+    __return_type = V;
+};
+
+
+printS_cif = CIF({S});
+
+
+S1 = class {
+    x = 0;
+
+    __types = {I};
+};
+
+S2 = class {
+    a = 0;
+    n = S1();
+
+    __types = {I, S};
+};
+
+
+__builtin_ffi_call(printS_handle, printS_cif, S2(1, S1(2)));
+__builtin_ffi_call(printS_handle, printS_cif, S2(3, S1(4)));
+)";
+
+    REQUIRE(pie::test::run(src3) == R"(a: 1, Nested.x: 2
+a: 3, Nested.x: 4)");
+}
+
+
+
+TEST_CASE("Accessing Unqualified Namespace Objects outside of Namesapce (via function call)", "[Space][Var]") {
+    const auto src1 = R"(
+
+space x {
+    a = 1;
+
+    printA = () => __builtin_print(a);
+};
+
+x::printA();
+)";
+
+    REQUIRE(pie::test::run(src1) == R"(1)");
+}
+
+
+
 TEST_CASE("Expansion Expression inside Constructor Call", "[Variadic][Class]") {
     const auto src1 = R"(
 C = class {
@@ -45,6 +151,7 @@ __builtin_print(c);
     d = 1;
 })");
 }
+
 
 
 TEST_CASE("Invalid Operators Import", "[Operator]") {

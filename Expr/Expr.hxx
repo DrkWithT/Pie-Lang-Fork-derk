@@ -1062,15 +1062,17 @@ struct Closure : Expr {
     type::FuncType type;
 
 
-    // I need to un-mutable this thing
-    mutable struct CapturedEnvs {
+
+    struct CapturedEnvs {
         value::Env env{};
         value::Env returned_env{};
         value::Env passed_env{};
     } envs;
 
     // whether it's a member function or not
-    mutable std::optional<value::Object> self{};
+    std::optional<value::Object> self{};
+
+    std::vector<interp::NameSpace*> spaces;
 
     Closure(std::vector<StringID> ps, ExprPtr b, type::FuncType t) noexcept
     : params{std::move(ps)}, body{std::move(b)}, type{std::move(t)} { }
@@ -1086,36 +1088,42 @@ struct Closure : Expr {
         if(params.size() != type.params.size()) util::error(); // should never happen anyway
     }
 
+
+    void inSpace(const std::vector<interp::NameSpace*>& sps) {
+        spaces = sps;
+    }
+
+
     // const as in doesn't change params or body.
-    void capture(const value::Environment& e) const {
+    void capture(const value::Environment& e) {
         for (const auto& [key, value] : e) {
             envs.env.env[key] = value;
         }
     }
-    void returnCapture(const value::Environment& e) const {
+    void returnCapture(const value::Environment& e) {
         for (const auto& [key, value] : e) {
             envs.returned_env.env[key] = value;
         }
     }
-    void passedCapture(const value::Environment& e) const {
+    void passedCapture(const value::Environment& e) {
         for (const auto& [key, value] : e) {
             envs.passed_env.env[key] = value;
         }
     }
 
-    void captureOps(const Operators& ops) const {
+    void captureOps(const Operators& ops) {
         for (const auto& [key, value] : ops) {
             envs.env.op_env[key] = value;
         }
     }
 
-    void capturePrefixOps(const Operators& ops) const {
+    void capturePrefixOps(const Operators& ops) {
         for (const auto& [key, value] : ops) {
             envs.env.prefix_op_env[key] = value;
         }
     }
 
-    void captureThis(const value::Object& obj) const { self = obj; }
+    void captureThis(const value::Object& obj) { self = obj; }
 
 
     std::string stringify(const size_t indent = 0) const override {

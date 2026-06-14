@@ -25,6 +25,8 @@
 #include "../Analysis/ExprContains.hxx"
 
 
+
+
 inline namespace pie {
 
 inline namespace parse {
@@ -676,10 +678,17 @@ public:
     expr::ExprPtr import_directive() {
         using enum TokenKind;
 
-        std::filesystem::path path = root;
-        path.append(consume(NAME).text);
+        std::filesystem::path path = util::getPiePath(); // root;
+        auto fname = consume(NAME).text + ".pie";
+        // path.append(consume(NAME).text);
+        if (std::filesystem::exists(path / "std" / fname)) {
+            path.append("std").append(std::move(fname));
+        }
+        else {
+            path = std::filesystem::canonical(root / std::move(fname));
+        }
 
-        const auto src = util::readFile(auto{path}.replace_extension(".pie").string());
+        const auto src = util::readFile(path);
         const Tokens tokens = lex::lex(src);
         if (tokens.empty()) util::error("Can't import an empty file!");
 

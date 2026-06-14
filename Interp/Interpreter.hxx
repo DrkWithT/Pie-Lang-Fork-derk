@@ -248,7 +248,7 @@ public:
     }
 
 
-    value::Value operator()(const expr::Expansion*) { util::error("Can only expand in function calls or fold expressions!"); }
+    value::Value operator()(const expr::Expansion *exp) { util::error("Can only expand in function calls or fold expressions: `" + exp->stringify() + "`"); }
 
 
     value::Value operator()(const expr::List *list) {
@@ -934,7 +934,7 @@ public:
         if (found == obj.second->members.end()) util::error("Name '" + name + "' doesn't exist in object '" + /*acc->var->*/ stringify(obj) + '\'');
 
         if (std::holds_alternative<expr::Closure>(*get<value::ValuePtr>(*found))) {
-            const auto& closure = get<expr::Closure>(*get<value::ValuePtr>(*found));
+            auto& closure = get<expr::Closure>(*get<value::ValuePtr>(*found));
 
             // value::Environment capture_list;
             // for (const auto& [name, value] : obj.second->members)
@@ -1893,7 +1893,7 @@ public:
         else ret = std::visit(*this, func->body->variant()); // capturing logic will be done by the scope's visitor
 
         if (func->self and std::holds_alternative<expr::Closure>(ret)) {
-            const auto& f = get<expr::Closure>(ret);
+            auto& f = get<expr::Closure>(ret);
             f.captureThis(*func->self);
         }
 
@@ -1985,7 +1985,7 @@ public:
         else ret = std::visit(*this, func->body->variant());
 
         if (func->self and std::holds_alternative<expr::Closure>(ret)) {
-            const auto& f = get<expr::Closure>(ret);
+            auto& f = get<expr::Closure>(ret);
             f.captureThis(*func->self);
         }
 
@@ -2041,7 +2041,7 @@ public:
         else ret = std::visit(*this, func->body->variant());
 
         if (func->self and std::holds_alternative<expr::Closure>(ret)) {
-            const auto& f = get<expr::Closure>(ret);
+            auto& f = get<expr::Closure>(ret);
             f.captureThis(*func->self);
         }
 
@@ -2098,7 +2098,7 @@ public:
         else ret = std::visit(*this, func->body->variant());
 
         if (func->self and std::holds_alternative<expr::Closure>(ret)) {
-            const auto& f = get<expr::Closure>(ret);
+            auto& f = get<expr::Closure>(ret);
             f.captureThis(*func->self);
         }
 
@@ -2177,7 +2177,7 @@ public:
         else ret = std::visit(*this, func->body->variant());
 
         if (func->self and std::holds_alternative<expr::Closure>(ret)) {
-            const auto& f = get<expr::Closure>(ret);
+            auto& f = get<expr::Closure>(ret);
             f.captureThis(*func->self);
         }
 
@@ -2235,6 +2235,7 @@ public:
 
             // if (isBuiltin(name))
             return evaluateBuiltin(
+                call, 
                 std::move(args),
                 std::move(expand_at),
                 std::move(call)->named_args,
@@ -2242,13 +2243,14 @@ public:
             );
         }
 
+        if (std::holds_alternative<type::TypePtr>(var)) return constructorCall(call, std::move(var));
+
 
         if (std::holds_alternative<expr::Closure>(var)) {
             return closureCall(call, get<expr::Closure>(std::move(var)), std::move(args), std::move(expand_at));
         }
 
 
-        if (std::holds_alternative<type::TypePtr>(var)) return constructorCall(call, std::move(var));
 
 
         if (std::holds_alternative<value::Object>(var)) {
@@ -2537,6 +2539,20 @@ public:
     }
 
 
+    static size_t argsSize(
+        const std::vector<pie::expr::ExprPtr>& args,
+        std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at
+    ) {
+        return args.size()
+        + std::ranges::fold_left( // plus the expansions
+            expand_at, 
+            size_t{}, 
+            [] (const auto& acc, const auto& elt) { return acc + elt.second.size(); }
+        ) 
+        - expand_at.size(); // minus redundant packs (already expanded)
+    }
+
+
     value::Value closureCall(
         const expr::Call *call,
         expr::Closure func,
@@ -2550,7 +2566,12 @@ public:
         // // func.type.ret = validateType(std::move(func).type.ret); // is this better?
 
         if (func.self) selves.push_back(*func.self);
-        util::Deferred d{[this, cond = static_cast<bool>(func.self)] { if (cond) selves.pop_back(); }};
+
+        auto old_spaces = std::move(current_space);
+        current_space = func.spaces;
+
+        util::Deferred d1{[this, cond = static_cast<bool>(func.self)] { if (cond) selves.pop_back(); }};
+        util::Deferred d2{[this, &old_spaces] { current_space = std::move(old_spaces); }};
 
 
         // check for invalid named arguments
@@ -2561,10 +2582,7 @@ public:
 
 
         const bool is_variadic = std::ranges::any_of(func.type.params, [] (const auto& e) { return type::isVariadic(e); });
-        const size_t args_size =
-        args.size() +
-        std::ranges::fold_left(expand_at, size_t{}, [] (const auto& acc, const auto& elt) { return acc + elt.second.size(); }) // plus the expansions
-        - expand_at.size(); // minus redundant packs (already expanded)
+        const size_t args_size = argsSize(args, expand_at);
 
         if (not is_variadic and args_size + call->named_args.size() > func.params.size()) util::error("Too many arguments passed to function: " + call->stringify());
 
@@ -2575,7 +2593,6 @@ public:
 
 
         //* full call. Don't curry!
-        // ScopeGuard sg{this, EnvTag::FUNC, func.args_env, func.env};
         ScopeGuard sg{this, value::EnvTag::FUNC, func.envs.env.env};
         value::Environment args_env; // in case the lambda needs to capture 
 
@@ -2685,7 +2702,7 @@ public:
 
 
     // since all variables are always alive, it there is no need to capture variables...for now at least
-    void captureEnvForReturnedClosure(const expr::Closure& c) {
+    void captureEnvForReturnedClosure(expr::Closure& c) {
         size_t found{};
 
         for (size_t i{}; i < env.size(); ++i)
@@ -2697,7 +2714,7 @@ public:
     }
 
 
-    void captureEnvForPassedClosure(const expr::Closure& c) {
+    void captureEnvForPassedClosure(expr::Closure& c) {
         // starting at one so we don't capture globals
         // of course, this is just a hack and not a fix
         // the proper fix would capture a reference to the variable instead...
@@ -3045,21 +3062,20 @@ public:
 
                 for (const auto& v : get<value::PackList>(pack)->values) {
                     auto& [name, type, _] = cls->blueprint->fields[field_idx++];
-                    type = validateType(type);
+                    auto new_type = validateType(type);
 
-                    typeCheck(v, type,
-                        "Type mis-match in constructor of:\n" + value::stringify(type) + "\nMember `" +
-                        name.stringify() + "` expected: " + type->text() + "\n"
+                    typeCheck(v, new_type,
+                        "Type mis-match in constructor of:\n" + value::stringify(new_type) + "\nMember `" +
+                        name.stringify() + "` expected: " + new_type->text() + "\n"
                         "but got: " + arg->stringify() + " which is " + typeOf(v)->text()
                     );
 
-                    obj.second->members.push_back({name, type, std::make_shared<value::Value>(v)});
+                    obj.second->members.push_back({name, new_type, std::make_shared<value::Value>(v)});
                 }
             }
             else {
                 const auto& v = std::visit(*this, std::move(arg)->variant());
                 auto& [name, type, _] = cls->blueprint->fields[field_idx++];
-
 
                 auto new_type = validateType(type); // is this.....fine??
 
@@ -3114,6 +3130,8 @@ public:
 
         // for (auto& type : closure.type.params) { type = validateType(std::move(type)); }
         // closure.type.ret = validateType(std::move(closure.type.ret));
+
+        closure.inSpace(current_space);
 
         // capture all the operators now:
         for (const auto& [_, __, ops, ___] : env)
@@ -3300,6 +3318,7 @@ public:
 
     // the gate into the META operators!
     value::Value evaluateBuiltin(
+        const expr::Call *call,
         std::vector<expr::ExprPtr> args,
         std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at,
         std::unordered_map<std::string, expr::ExprPtr> named_args,
@@ -3407,9 +3426,8 @@ public:
             return builtinConcat(std::move(args));
         }
 
-
         if (name == "ffi_call") {
-            return ffiCall(std::move(args), std::move(expand_at));
+            return ffiCall(call, std::move(args), std::move(expand_at));
         }
 
 
@@ -3651,10 +3669,12 @@ public:
 
 
     value::Value ffiCall(
-        std::vector<expr::ExprPtr>(args),
-        [[maybe_unused]] std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at
+        const expr::Call *call,
+        std::vector<expr::ExprPtr> args,
+        std::vector<std::pair<size_t, std::vector<value::Value>>> expand_at
     ) {
-        if (args.size() < 2) util::error("`__builtin_call` requires the symbol name and the CIF!");
+        const auto args_size = argsSize(args, expand_at);
+        if (args_size < 2) util::error("`__builtin_call` requires the symbol name and the CIF!");
 
         const auto sym = reinterpret_cast<void*>(get<BigInt>(std::visit(*this, args[0]->variant())));
         const auto pie_cif = get<value::Object>(std::visit(*this, args[1]->variant()));
@@ -3662,44 +3682,69 @@ public:
         ffi_type* return_type;
         BigInt r_type;
 
-        const auto args_size = args.size() - 2;
+        const auto reserve_size = args_size - 2;
         std::vector<ffi_type*> param_types;
-        param_types.reserve(args_size);
+        param_types.reserve(reserve_size);
 
         std::vector<value::Value> values;
-        values.reserve(args_size);
+        values.reserve(reserve_size);
 
         std::deque<void*> pointer_values;
 
         std::vector<void*> values_pointers;
-        values_pointers.reserve(args_size);
+        values_pointers.reserve(reserve_size);
 
         std::vector<std::vector<void*>> struct_values;
-        struct_values.reserve(args_size);
+        struct_values.reserve(reserve_size);
 
         std::deque<std::vector<std::byte>> payloads;
 
-        std::vector<ffi::FFI*> structs_ffis;
+        std::vector<std::unique_ptr<ffi::FFI>> structs_ffis;
 
         // look for `param_types` and `return_types`
         bool found_params{}, found_return{};
         for (const auto& [name, _, value_ptr] : pie_cif.second->members) {
-            if (name.name == "param_types") {
+            if (name.name == "__param_types") {
                 found_params = true;
 
                 if (not std::holds_alternative<value::ListValue>(*value_ptr)) util::error();
 
 
                 const auto& list = get<value::ListValue>(*value_ptr);
-                if (list.elts->values.size() != args.size() - 2) // `-2` to exclude the sym and cif
-                    util::error();
+                if (list.elts->values.size() != reserve_size) // `reserve_size` instead of `args_size` because `-2` to exclude the sym and cif
+                    util::error("Wrong number of arguments passed to function: " + call->stringify());
+
 
                 for (
-                    const auto& [type, arg] :
-                    std::views::zip(list.elts->values, args | std::views::drop(2))
+                    size_t i{}, p{2}, curr{}, val_idx{}; // skip the first 2 arguments
+                    p < args_size;
+                    ++i
                 ) {
-                    // if (curr < expand_at.size() and i++ == expand_at[curr].first) {
-                    // for (const auto& e : expand_at[curr++].second) {
+                    const auto& type = list.elts->values[i];
+                    const auto& arg  = args[p];
+
+                    value::Value value;
+                    if (curr < expand_at.size()) {
+                        if (p == expand_at[curr].first) {
+                            if (val_idx < expand_at[curr].second.size()) {
+                                value = expand_at[curr].second[val_idx++];
+                            }
+                            else {
+                                p += val_idx;
+                                val_idx = {};
+                                ++curr;
+                                continue;
+                            }
+                        }
+                        else {
+                            value = std::visit(*this, arg->variant());
+                        }
+                    }
+                    else {
+                        value = std::visit(*this, arg->variant());
+                        ++p;
+                    }
+
 
                     if (not std::holds_alternative<BigInt>(type))
                         util::error("Invalid C Type: " + value::stringify(type));
@@ -3711,18 +3756,34 @@ public:
 
 
                     switch (type_id) {
-                        case FFI_TYPE_INT: {
-                            param_types.push_back(&ffi_type_sint32);
-                            values.push_back(std::visit(*this, arg->variant()));
-                            if (not std::holds_alternative<BigInt>(values.back())) util::error();
+                        case FFI_TYPE_SINT32:
+                        case FFI_TYPE_INT   : {
+                            if (not std::holds_alternative<BigInt>(value)) util::error();
 
+                            param_types.push_back(&ffi_type_sint32);
+                            values.push_back(std::move(value));
                             values_pointers.push_back(&get<BigInt>(values.back()));
+
+                        } break;
+
+                        case FFI_TYPE_UINT8   : {
+                            param_types.push_back(&ffi_type_uint8);
+                            values.push_back(std::move(value));
+
+                            //! potential bug!
+                            if (std::holds_alternative<BigInt>(values.back())) {
+                                values_pointers.push_back(&get<BigInt>(values.back()));
+                            }
+                            else if (std::holds_alternative<bool>(values.back())) {
+                                values_pointers.push_back(&get<bool>(values.back()));
+                            }
+                            else util::error();
 
                         } break;
 
                         case FFI_TYPE_POINTER: {
                             param_types.push_back(&ffi_type_pointer);
-                            values.push_back(std::visit(*this, arg->variant()));
+                            values.push_back(std::move(value));
                             if (not std::holds_alternative<std::string>(values.back())) util::error();
 
                             pointer_values .push_back(get<std::string>(values.back()).data());
@@ -3732,42 +3793,43 @@ public:
 
                         case FFI_TYPE_STRUCT: {
 
-                            const auto ffi = ffi::prepareFFI(visit(*this, arg->variant()), type_id);
+                            auto ffi = ffi::prepareFFI(std::move(value), type_id);
                             param_types.push_back(ffi->type);
 
                             payloads.emplace_back(ffi->type->size);
 
                             auto payload = payloads.back().data();
 
-                            ffi::pack(payload, ffi);
+                            ffi::pack(payload, ffi.get());
 
                             // pointer_values.push_back();
                             values_pointers.push_back(payload);
-                            structs_ffis.push_back(ffi);
+                            structs_ffis.push_back(std::move(ffi));
 
                         } break;
 
                         default:
                             util::error();
-                    }
+                        }
                 }
             }
-            else if (name.name == "return_type") {
+            else if (name.name == "__return_type") {
                 found_return = true;
 
-                const auto type = *value_ptr;
-                if (not std::holds_alternative<BigInt>(type)) util::error();
+                if (not std::holds_alternative<BigInt>(*value_ptr)) util::error();
 
 
-                switch (r_type = get<BigInt>(type)) {
+                switch (r_type = get<BigInt>(*value_ptr)) {
+                    case FFI_TYPE_SINT32 :
                     case FFI_TYPE_INT    : return_type = &ffi_type_sint32 ; break;
+                    case FFI_TYPE_UINT8  : return_type = &ffi_type_uint8  ; break;
+
                     case FFI_TYPE_POINTER: return_type = &ffi_type_pointer; break;
                     case FFI_TYPE_VOID   : return_type = &ffi_type_void   ; break;
 
                     default:
                         util::error();
                 }
-
             }
         }
 
@@ -3782,13 +3844,13 @@ public:
             param_types.data()
         );
 
-
         if (result != FFI_OK) util::error();
 
 
         value::Value ret_value;
         switch (r_type) {
-            case FFI_TYPE_INT: {
+            case FFI_TYPE_SINT32:
+            case FFI_TYPE_INT   : {
                 BigInt return_value;
                 ffi_call(
                     &cif,
@@ -3797,6 +3859,20 @@ public:
                     values_pointers.data()
                 );
                 ret_value = return_value;
+            } break;
+
+            case FFI_TYPE_UINT8: {
+                BigInt return_value;
+                ffi_call(
+                    &cif,
+                    reinterpret_cast<void(*)()>(sym),
+                    &return_value,
+                    values_pointers.data()
+                );
+                if (return_value == 0 or return_value == 1)
+                    ret_value = bool(return_value);
+                else
+                    ret_value = return_value;
             } break;
 
             case FFI_TYPE_POINTER: {
@@ -3823,10 +3899,6 @@ public:
             [[fallthrough]];
             default: // not gonna happend. Already checked up there
                 ret_value = 0;
-        }
-
-        for (const auto& ffi : structs_ffis) {
-            ffi::destroy(ffi);
         }
 
         return ret_value;
@@ -4198,6 +4270,14 @@ public:
         for (const auto& [e, _, __, ___] : std::views::reverse(env)) {
             if (e.contains(ID)) {
                 const auto& [named_ref, value_ptr, type_ptr] = e.at(ID);
+                return {{*value_ptr, type_ptr}};
+            }
+        }
+
+
+        for (const auto& ns : std::views::reverse(current_space)) {
+            if (ns->members.contains(ID)) {
+                const auto& [named_ref, value_ptr, type_ptr] = ns->members.at(ID);
                 return {{*value_ptr, type_ptr}};
             }
         }

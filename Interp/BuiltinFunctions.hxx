@@ -213,19 +213,22 @@ static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
     MapEntry<
         S<"set">,
         Func<"set",
-            decltype([](const auto& cont, const auto& at, const auto& elt, const auto&) -> value::Value {
+            decltype([](const auto& cont, const auto& at, const auto& elt, const auto& that) -> value::Value {
                 using T = std::remove_cvref_t<decltype(cont)>;
 
                 if constexpr (std::is_same_v<T, value::ListValue>) {
                     if (at < 0 or size_t(at) >= cont.elts->values.size())
                         util::error("Accessing list '" + stringify(cont) + "' at index '" + std::to_string(at) + "' which is out of bounds!");
 
-                    return cont.elts->values[at] = elt;
+                    return cont.elts->values[at] = that->typeCheck(elt, that->typeOf(cont));
                 }
 
                 else if constexpr (std::is_same_v<T, value::MapValue>) {
-                    auto key = stringify(at);
-                    return cont.items->map[key] = elt;
+                    const auto type = that->typeOf(cont);
+                    const auto& map_type = dynamic_cast<const type::MapType&>(*type);
+
+                    auto key = stringify(that->typeCheck(at, map_type.key_type));
+                    return cont.items->map[key] = that->typeCheck(elt, map_type.val_type);
                 }
             }),
             TypeList<value::ListValue, BigInt, Any>,
@@ -237,8 +240,11 @@ static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
     MapEntry<
         S<"push">,
         Func<"push",
-            decltype([](const auto& cont, const auto& elt, const auto&) -> value::Value {
-                cont.elts->values.push_back(elt);
+            decltype([](const auto& cont, const auto& elt, const auto& that) -> value::Value {
+                // added type checking step since
+                // the interpreter only type checks on assignments
+                cont.elts->values.push_back(that->typeCheck(elt, that->typeOf(cont)));
+
                 return elt;
             }),
             TypeList<value::ListValue, Any>

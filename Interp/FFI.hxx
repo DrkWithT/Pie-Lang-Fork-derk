@@ -1,11 +1,14 @@
 #pragma once
 
+
 #include <cstddef>
 
 #include "../Value/Value.hxx"
 #include "../Utils/utils.hxx"
 
 #include <ffi.h>
+#include <memory>
+#include <ranges>
 
 inline namespace pie {
 namespace ffi {
@@ -13,64 +16,91 @@ namespace ffi {
 class FFI {
 public:
 
-    union Memory {
-        struct Single {
-            value::Value  *value ;
-            void *ptr;
-        } single;
+    struct Single {
+        std::unique_ptr<value::Value> value;
+        void *ptr = nullptr;
+    };
 
-        struct Multi {
-            value::Value* *values;
-            FFI* *nested;
-            size_t n;
-        } multi;
-    } mem;
+    struct Multi {
+        std::vector<std::unique_ptr<FFI>> nested;
+
+        Multi() = default;
+        Multi(const Multi&) = delete;
+        Multi(Multi&&) = default;
+        Multi& operator=(const Multi&) = delete;
+        Multi& operator=(Multi&&) = default;
+    };
 
 
+    std::variant<Single, Multi> field;
     ffi_type *type;
-
 
     bool isStruct() const noexcept { return type->type == FFI_TYPE_STRUCT; }
 
 
-
-    // for debugging
-    void print(const size_t indent = 0) const {
-        std::string dent(indent, ' ');
-
+    ~FFI() {
         if (isStruct()) {
-            std::clog << dent << "struct: " << std::endl;
-            for (size_t i{}; i < mem.multi.n; ++i) {
-                std::clog << dent << "value: " << value::stringify(*mem.multi.values[i]) << std::endl;
-                (*mem.multi.nested)->print(indent + 4);
-            }
-        }
-        else {
-            std::clog << dent << "regular value: " << value::stringify(*mem.single.value) << std::endl;
+            delete[] type->elements;
+            delete type;
         }
     }
 };
 
 
 
+template <typename T>
+static void errorCheck(const value::Value& value, const char* type_name) {
+    if (not std::holds_alternative<T>(value))
+        util::error("C Type indicated `" + (type_name + ("` bit value passed was: " + value::stringify(value))));
+}
 
 
-inline FFI* prepareFFI(const value::Value& value, const BigInt type_id) {
-    const auto value_ptr = new value::Value{value};
+inline std::unique_ptr<FFI> prepareFFI(const value::Value& value, const BigInt type_id) {
+    // const auto value_ptr = new auto{value};
+    auto value_ptr = std::make_unique<value::Value>(value);
 
     switch (type_id) {
-        case FFI_TYPE_INT: {
-            if (not std::holds_alternative<BigInt>(*value_ptr)) util::error();
-            return new FFI{value_ptr, &get<BigInt>(*value_ptr), &ffi_type_sint32};
+        case FFI_TYPE_SINT32:
+        case FFI_TYPE_INT   : {
+            errorCheck<BigInt>(value, "int");
+
+            auto ret = std::make_unique<FFI>(
+                FFI::Single{std::move(value_ptr)},
+                &ffi_type_sint32
+            );
+            get<FFI::Single>(ret->field).ptr = &get<BigInt>(*get<FFI::Single>(ret->field).value);
+
+            return ret;
+        }
+
+        case FFI_TYPE_UINT8: {
+            errorCheck<BigInt>(value, "unsigned char");
+
+            auto ret = std::make_unique<FFI>(
+                FFI::Single{std::move(value_ptr)},
+                &ffi_type_uchar
+            );
+            get<FFI::Single>(ret->field).ptr = &get<BigInt>(*get<FFI::Single>(ret->field).value);
+
+            return ret;
         }
 
         case FFI_TYPE_POINTER: {
-            if (not std::holds_alternative<std::string>(*value_ptr)) util::error();
-            return new FFI{value_ptr, get<std::string>(*value_ptr).data(), &ffi_type_pointer};
+            errorCheck<std::string>(value, "pointer type");
+            auto ret = std::make_unique<FFI>(
+                FFI::Single{std::move(value_ptr)},
+                &ffi_type_pointer
+            );
+
+            get<FFI::Single>(ret->field).ptr = get<std::string>(*get<FFI::Single>(ret->field).value).data();
+            // get<std::string>(*value_ptr).data()
+
+            return ret;
         }
 
         case FFI_TYPE_STRUCT: {
-            if (not std::holds_alternative<value::Object>(*value_ptr)) util::error();
+            // if (not std::holds_alternative<value::Object>(*value_ptr)) util::error();
+            errorCheck<value::Object>(value, "struct");
 
             const auto& obj = get<value::Object>(*value_ptr);
 
@@ -94,25 +124,31 @@ inline FFI* prepareFFI(const value::Value& value, const BigInt type_id) {
             const size_t size = c_types.size();
             const auto types = new ffi_type*[size + 1];
             types[size] = nullptr;
-            auto ret = new FFI{.mem = {.multi = {new value::Value*[size], new ffi::FFI*[size], size}}};
+            auto ret = std::make_unique<FFI>(FFI::Multi{});
 
             // zip shortens the members list to the type list length.
             // this intended to allow the user to attach methods and other members to the Pie class
-            for (size_t i{}; const auto& [id, member] : std::views::zip(c_types, obj.second->members)) {
+
+            size_t i{};
+            for (
+                auto& field = get<FFI::Multi>(ret->field);
+                const auto& [id, member] :
+                    std::views::zip(
+                        c_types,
+                        obj.second->members | std::views::filter([] (const auto& member) { return get<0>(member).name != "__types"; })
+                    )
+            ) {
                 const auto& [name, _, value_ptr] = member;
 
                 auto ffi = prepareFFI(*value_ptr, id);
 
-                types[i] = ffi->type;
-                ret->mem.multi.nested[i] = ffi;
-                ret->mem.multi.values[i] = ffi->mem.single.value;
-
-
-                ++i;
+                // field.values.push_back(std::move(get<FFI::Single>(ffi->field)).value);
+                types[i++] = ffi->type;
+                field.nested.push_back(std::move(ffi));
             }
 
 
-            const auto& ffi_struct = new ffi_type{{}, {}, FFI_TYPE_STRUCT, types};
+            const auto ffi_struct = new ffi_type{{}, {}, FFI_TYPE_STRUCT, types};
 
             // necessary call to `ffi_get_struct_offsets` to fill in .size and .alignment of `ffi_struct`
             size_t dummy[256];
@@ -139,46 +175,35 @@ inline void pack(std::byte *buffer, const FFI *ffi) {
         size_t offset[256];
         ffi_get_struct_offsets(FFI_DEFAULT_ABI, ffi->type, offset);
 
-        for (size_t i = 0; i < ffi->mem.multi.n; ++i) {
-            pack(buffer + offset[i], ffi->mem.multi.nested[i]);
+        const auto& field = get<FFI::Multi>(ffi->field);
+        for (size_t i = 0; i < field.nested.size(); ++i) {
+            pack(buffer + offset[i], field.nested[i].get());
         }
 
         return;
     }
 
     switch (ffi->type->type) {
+            *reinterpret_cast<int*>(buffer) = static_cast<int>(get<BigInt>(*get<FFI::Single>(ffi->field).value));
+            return;
+
         case FFI_TYPE_SINT32:
-        case FFI_TYPE_INT:
-            *reinterpret_cast<int*>(buffer) = static_cast<int>(get<BigInt>(*ffi->mem.single.value));
+        case FFI_TYPE_INT   :
+            *reinterpret_cast<int*>(buffer) = static_cast<int>(get<BigInt>(*get<FFI::Single>(ffi->field).value));
+            return;
+
+        case FFI_TYPE_UINT8:
+            *reinterpret_cast<unsigned char*>(buffer) = static_cast<unsigned char>(get<BigInt>(*get<FFI::Single>(ffi->field).value));
             return;
 
         case FFI_TYPE_POINTER:
-            *reinterpret_cast<char**>(buffer) = get<std::string>(*ffi->mem.single.value).data();
+            *reinterpret_cast<char**>(buffer) = get<std::string>(*get<FFI::Single>(ffi->field).value).data();
             return;
     }
 }
 
 
 
-inline void destroy(const FFI *ffi) {
-    if (ffi->isStruct()) {
-        delete[] ffi->mem.multi.values;
-
-        for (size_t i{}; i < ffi->mem.multi.n; ++i)
-            destroy(ffi->mem.multi.nested[i]);
-        delete[] ffi->mem.multi.nested;
-
-        delete[] ffi->type->elements;
-        delete ffi->type;
-    }
-    else {
-        delete ffi->mem.single.value;
-        // delete ffi->single.ptr;
-        // .ptr is referencing the internal data inside .value
-        // so it should be deleted when value is deleted
-
-    }
-}
 
 } // namespace ffi
 } // namespace pie

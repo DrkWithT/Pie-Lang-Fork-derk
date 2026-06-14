@@ -184,9 +184,6 @@ inline void pack(std::byte *buffer, const FFI *ffi) {
     }
 
     switch (ffi->type->type) {
-            *reinterpret_cast<int*>(buffer) = static_cast<int>(get<BigInt>(*get<FFI::Single>(ffi->field).value));
-            return;
-
         case FFI_TYPE_SINT32:
         case FFI_TYPE_INT   :
             *reinterpret_cast<int*>(buffer) = static_cast<int>(get<BigInt>(*get<FFI::Single>(ffi->field).value));

@@ -50,11 +50,11 @@ test: checklibs Tests/Test.cc
 
 
 test_dylib_mac:
-	$(CC) $(VER) -dynamiclib Tests/ffi_test.cpp -o Tests/dylib
+	$(CC) $(VER) -dynamiclib      Tests/ffi_test.cpp -o Tests/dylib
 
 
 test_dylib_lnx:
-	$(CC) $(VER) -c -fPIC    Tests/ffi_test.cpp -o Tests/dylib
+	$(CC) $(VER) -c -fPIC -shared Tests/ffi_test.cpp -o Tests/dylib
 
 
 web: checklibs main.cc

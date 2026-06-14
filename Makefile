@@ -54,10 +54,10 @@ web: checklibs main.cc
 
 
 test_dylib_lnx:
-	$(CC) $(VER) -c -fPIC Tests/ffi_test.cpp -o Tests/dylib
+	$(CC) $(VER) -c -fPIC -shared Tests/ffi_test.cpp -o Tests/dylib
 
 gh-actions: checklibs test_dylib_lnx Tests/Test.cc
-	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -fPIC -shared -O0 Tests/Test.cc Tests/catch.cpp -o run_tests -DNO_ERR_LOC && ./run_tests
+	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -O0 Tests/Test.cc Tests/catch.cpp -o run_tests -DNO_ERR_LOC && ./run_tests
 
 
 checklibs:

@@ -48,20 +48,16 @@ debug: checklibs main.cc
 test: checklibs Tests/Test.cc
 	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -O0 Tests/Test.cc Tests/catch.cpp -o run_tests $(SAN) -DNO_ERR_LOC && ./run_tests && rm run_tests
 
-
-test_dylib_mac:
-	$(CC) $(VER) -dynamiclib      Tests/ffi_test.cpp -o Tests/dylib
-
-
-test_dylib_lnx:
-	$(CC) $(VER) -c -fPIC -shared Tests/ffi_test.cpp -o Tests/dylib
-
-
 web: checklibs main.cc
 	$(WEBCC) $(CPP) $(WEB_ARGS) $(VER) $(INCLUDE) $(OPT) main.cc -o $(WEB_OUTPUT_NAME) -DWEB_PIE
 
-gh-actions: checklibs Tests/Test.cc
-	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -O0 Tests/Test.cc Tests/catch.cpp -o run_tests -DNO_ERR_LOC && ./run_tests
+
+
+test_dylib_lnx:
+	$(CC) $(VER) -c -fPIC Tests/ffi_test.cpp -o Tests/dylib
+
+gh-actions: checklibs test_dylib_lnx Tests/Test.cc
+	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -shared -O0 Tests/Test.cc Tests/catch.cpp -o run_tests -DNO_ERR_LOC && ./run_tests
 
 
 checklibs:

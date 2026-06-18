@@ -11,7 +11,7 @@ ARGS = -Wall -Wextra -Wpedantic -Wno-missing-braces #-Wnrvo
 WEB_ARGS = -sWASM=1 -sFORCE_FILESYSTEM -sEXPORTED_RUNTIME_METHODS='["callMain"]' \
 	 -sASSERTIONS -sENVIRONMENT=web -INVOKE_RUN_AT_START=0 -sEXIT_RUNTIME=0 -sNO_DISABLE_EXCEPTION_CATCHING
 
-CPP = Type/*.cxx Value/*.cxx
+CPP = $(wildcard src/Lex/*.cxx src/Parser/*.cxx src/Analysis/*.cxx src/Interp/*.cxx src/Utils/*.cxx src/Preprocessor/*.cxx src/Type/*.cxx src/Value/*.cxx)
 SAN = -fsanitize=undefined -fsanitize=address # -g3
 
 OUTPUT_NAME = Pie
@@ -32,24 +32,25 @@ LOCAL_INCLUDE_DIR = includes
 
 # Include paths
 INCLUDE = \
-	-I$(MP11_DIR)/include/       \
-	-I$(CPP_STD_EXT_DIR)/include/ \
-	-I$(LIB_FFI_DIR)/include/	   \
-	-lffi 							\
+	-Isrc                              \
+	-I$(MP11_DIR)/include/             \
+	-I$(CPP_STD_EXT_DIR)/include/      \
+	-I$(LIB_FFI_DIR)/include/          \
+	-lffi 							   \
 
 
 # Main target
-main: checklibs main.cc
-	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) $(OPT) -DNO_ERR_LOC main.cc -o $(OUTPUT_NAME)
+main: checklibs src/main.cc
+	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) $(OPT) -DNO_ERR_LOC src/main.cc -o $(OUTPUT_NAME)
 
-debug: checklibs main.cc
-	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -O0 main.cc -o $(OUTPUT_NAME) $(SAN)
+debug: checklibs src/main.cc
+	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -O0 src/main.cc -o $(OUTPUT_NAME) $(SAN)
 
 test: checklibs Tests/Test.cc
 	$(CC) $(CPP) $(ARGS) $(VER) $(INCLUDE) -O0 Tests/Test.cc Tests/catch.cpp -o run_tests $(SAN) -DNO_ERR_LOC && ./run_tests && rm run_tests
 
-web: checklibs main.cc
-	$(WEBCC) $(CPP) $(WEB_ARGS) $(VER) $(INCLUDE) $(OPT) main.cc -o $(WEB_OUTPUT_NAME) -DWEB_PIE
+web: checklibs src/main.cc
+	$(WEBCC) $(CPP) $(WEB_ARGS) $(VER) $(INCLUDE) $(OPT) src/main.cc -o $(WEB_OUTPUT_NAME) -DWEB_PIE
 
 
 

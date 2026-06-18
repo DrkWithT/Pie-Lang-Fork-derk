@@ -6,10 +6,10 @@
 #include <unistd.h>
 
 
-#include "../Lex/Lexer.hxx"
-#include "../Parser/Parser.hxx"
-#include "../Analysis/LexicalScoping.hxx"
-#include "../Interp/Interpreter.hxx"
+#include "../src/Lex/Lexer.hxx"
+#include "../src/Parser/Parser.hxx"
+#include "../src/Analysis/LexicalScoping.hxx"
+#include "../src/Interp/Interpreter.hxx"
 
 
 inline namespace pie {

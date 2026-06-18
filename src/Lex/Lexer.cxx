@@ -1,19 +1,11 @@
-#pragma once
-
-#include "Token.hxx"
-#include "../Utils/utils.hxx"
-
-#include <cctype>
-#include <string>
-#include <string_view>
-#include <vector>
+#include "Lexer.hxx"
 
 
 inline namespace pie {
 inline namespace lex {
 
 
-inline TokenKind keyword(const std::string_view word) noexcept {
+TokenKind keyword(const std::string_view word) noexcept {
     using enum TokenKind;
     if (word == "mixfix") return MIXFIX;
     else if (word == "prefix") return PREFIX;
@@ -29,14 +21,10 @@ inline TokenKind keyword(const std::string_view word) noexcept {
     else if (word == "break"   ) return BREAK;
     else if (word == "continue") return CONTINUE;
 
-    // pre-processor handles imports
     else if (word == "import") return IMPORT;
-    // else if (word == "namespace") return NAMESPACE;
     else if (word == "space" ) return NAMESPACE;
 
-    // which one is nicer..?
     else if (word == "use") return USE;
-    // else if (word == "using") return USE;
 
     else if (word == "true"  ) return BOOL;
     else if (word == "false" ) return BOOL;
@@ -45,7 +33,7 @@ inline TokenKind keyword(const std::string_view word) noexcept {
 }
 
 
-inline bool validNameChar(const char c) noexcept {
+bool validNameChar(const char c) noexcept {
     switch (c) {
         case '?':
         case '!':
@@ -68,14 +56,13 @@ inline bool validNameChar(const char c) noexcept {
         case '>':
         case '[':
         case ']':
-        // case '=': // function would only be used when checking chars that are not the first in the name
             return true;
     }
 
-    return isalnum(c);
+    return isalnum(static_cast<unsigned char>(c));
 }
 
-[[nodiscard]] inline Tokens lex(const std::string& src) {
+[[nodiscard]] Tokens lex(const std::string& src) {
     TokenLines lines = {{}};
     Tokens line;
 
@@ -84,20 +71,18 @@ inline bool validNameChar(const char c) noexcept {
 
 
     for (size_t index{}; index < src.length(); ++index) {
-        // if (isspace(src[index])) continue;
 
         try {
         switch (src[index]) {
             using enum TokenKind;
 
-            // ! remove pragmas
             #pragma GCC diagnostic push
             #pragma GCC diagnostic ignored "-Wpedantic"
             case '0' ... '9':
             #pragma GCC diagnostic pop
             {
                 const auto beginning = index;
-                while (isdigit(src.at(++index)));
+                while (isdigit(static_cast<unsigned char>(src.at(++index))));
 
                 bool is_name = validNameChar(src[index]);
                 if (is_name) {
@@ -108,9 +93,9 @@ inline bool validNameChar(const char c) noexcept {
                 }
 
                 bool is_float = false;
-                if (src[index] == '.' and isdigit(src.at(index + 1))) {
+                if (src[index] == '.' and isdigit(static_cast<unsigned char>(src.at(index + 1)))) {
                     is_float = true;
-                    while (isdigit(src.at(++index)));
+                    while (isdigit(static_cast<unsigned char>(src.at(++index))));
                 }
 
                 lines.back().emplace_back(is_float ? FLOAT : INT, src.substr(beginning, index - beginning));
@@ -139,7 +124,6 @@ inline bool validNameChar(const char c) noexcept {
             case '>':
             case '[':
             case ']':
-            // ! remove pragmas
             #pragma GCC diagnostic push
             #pragma GCC diagnostic ignored "-Wpedantic"
             case 'a' ... 'z':
@@ -150,7 +134,6 @@ inline bool validNameChar(const char c) noexcept {
                 while (validNameChar(src.at(++index)));
 
                 const auto word = src.substr(beginning, index - beginning);
-                // check for keywords here :)
 
 
                 if (word == "__TEXT__") [[unlikely]] {
@@ -181,8 +164,6 @@ inline bool validNameChar(const char c) noexcept {
             case '=':
                 if (src.at(index + 1) == '>')
                     lines.back().push_back({FAT_ARROW, {src[index], src[++index]}});
-                // else if ((src[index + 1] == '='))
-                //     lines.back().push_back({NAME, {src[index], src[++index]}});
                 else
                     lines.back().push_back({ASSIGN, {src[index]}});
 
@@ -193,7 +174,6 @@ inline bool validNameChar(const char c) noexcept {
                 if (src.at(index + 1) == ':') {
                     if (src.at(index + 2) == ':') {
                         for(index += 2;
-                            // src.at(index) != ':' or src.at(index + 1) != ':' or src.at(index + 2) == '.'
                             src.substr(index, 3) != "::.";
                             ++index
                         );
@@ -223,7 +203,6 @@ inline bool validNameChar(const char c) noexcept {
 
             case '`': lines.back().push_back({BACKTICK, {src[index]}}); break;
 
-            // case '\n': lines.back().clear(); break;
             case '\n':
                 ++line_count;
                 line_starting_index = index + 1;
@@ -234,7 +213,6 @@ inline bool validNameChar(const char c) noexcept {
 
             case '{':
                 lines.back().push_back({L_BRACE, {src[index]}});
-                // lines.push_back({});
                 break;
 
             case '}': lines.back().push_back({R_BRACE, {src[index]}}); break;
@@ -242,7 +220,6 @@ inline bool validNameChar(const char c) noexcept {
             case '"':{
                 const size_t old = index;
                 while(src.at(++index) != '"') {
-                    // if (src[index] == '\\')
                 }
                 lines.back().push_back({STRING, src.substr(old + 1, index - old -1)});
             } break;
@@ -274,7 +251,6 @@ inline bool validNameChar(const char c) noexcept {
 
     return tokens;
 }
-
 
 
 } // namespace lex

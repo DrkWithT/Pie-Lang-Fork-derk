@@ -1,22 +1,10 @@
-#pragma once
-
-#include <print>
-#include <string>
-#include <filesystem>
-#include <utility>
-
-#include "../Lex/Lexer.hxx"
-// #include "../Preprocessor/Preprocessor.hxx"
-#include "../Parser/Parser.hxx"
-#include "../Analysis/LexicalScoping.hxx"
-#include "../Interp/Interpreter.hxx"
-
+#include "CLI.hxx"
 
 
 inline namespace pie {
 namespace cli {
 
-    inline void help() {
+    void help() {
         std::println("-t [--token]  :   print tokens");
         std::println("-a [--ast]    :   print parsed");
         std::println("-r [--run]    :   don't run program");
@@ -25,7 +13,7 @@ namespace cli {
     }
 
 
-    inline void REPL(
+    void REPL(
         const std::filesystem::path canonical_root,
         const bool print_tokens,
         const bool print_parsed,
@@ -41,10 +29,6 @@ namespace cli {
             std::getline(std::cin, line);
             if (line.back() != ';') line += ';';
 
-
-            // constexpr auto REPL = true;
-            // auto processed_line = preprocess<REPL>(std::move(line), canonical_root); // root in repl mode is where we ran the interpret
-            // if (print_preprocessed) std::println(std::clog, "{}", line);
 
             Tokens v = lex::lex(std::move(line));
             if (print_tokens) std::println(std::clog, "{}", v);
@@ -82,7 +66,7 @@ namespace cli {
 
 
 
-    inline void runFile(
+    void runFile(
         const std::filesystem::path fname,
         const bool print_tokens,
         const bool print_parsed,
@@ -90,8 +74,6 @@ namespace cli {
     ) {
         auto src = util::readFile(fname.string());
 
-        // auto processed_src = preprocess(std::move(src), fname);
-        // if (print_preprocessed) std::println(std::clog, "{}", processed_src);
         auto processed_src = std::move(src);
 
         Tokens v = lex::lex(std::move(processed_src));
@@ -122,7 +104,7 @@ namespace cli {
 
 
 
-    inline void run(
+    void run(
         std::string src,
         const bool print_tokens,
         const bool print_parsed,
@@ -156,4 +138,3 @@ namespace cli {
 
 } // namespace cli
 } // namespace pie
-

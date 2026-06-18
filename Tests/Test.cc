@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include "TestSuite.hxx"
 
-#include "../Type/Type.hxx"
+#include "../src/Type/Type.hxx"
 
 
 

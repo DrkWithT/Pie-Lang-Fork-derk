@@ -6,14 +6,8 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
-#include <ranges>
-#include <variant>
 
 
-#include "../Lex/Lexer.hxx"
-#include "../Parser/Parser.hxx"
-#include "../Utils/utils.hxx"
-#include "../Utils/Exceptions.hxx"
 #include "../Expr/Expr.hxx"
 #include "../Type/Type.hxx"
 
@@ -21,15 +15,7 @@
 inline namespace pie {
 namespace analysis {
 
-static std::string stringify(const std::vector<std::string>& spaces) {
-    if (spaces.size() == 1) return spaces[0];
-
-    std::string s = spaces[0];
-    for (const auto& space : spaces | std::views::drop(1))
-        s += "::" + space;
-
-    return s;
-}
+std::string stringify(const std::vector<std::string>& spaces);
 
 struct NameSpace {
     std::string name;

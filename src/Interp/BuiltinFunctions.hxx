@@ -4,6 +4,7 @@
 
 #include <dlfcn.h>
 
+#include <ranges>
 #include <stdx/tuple.hpp>
 #include <ffi.h>
 
@@ -154,6 +155,23 @@ static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
     >{},
 
     MapEntry<
+        S<"str_split">,
+        Func<"str_split",
+            decltype([](const auto& input, const auto& delim, const auto&) {
+                return value::makeList(
+                    input
+                    | std::views::split(delim)
+                    | std::views::transform([] (const auto& str) -> value::Value {
+                        return std::string{std::string_view{str}};
+                    })
+                    | std::ranges::to<std::vector<value::Value>>()
+                );
+            }),
+            TypeList<std::string, std::string>
+        >
+    >{},
+
+    MapEntry<
         S<"eval">,
         Func<"eval",
             decltype([](const auto& x, const auto& that) {
@@ -170,6 +188,18 @@ static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
                 const auto back = cont.elts->values.back();
                 cont.elts->values.pop_back();
                 return back;
+            }),
+            TypeList<value::ListValue>
+        >
+    >{},
+
+    MapEntry<
+        S<"pop_front">,
+        Func<"pop_front",
+            decltype([](const auto& cont, const auto&) -> value::Value {
+                const auto front = cont.elts->values.front();
+                cont.elts->values.erase(cont.elts->values.begin());
+                return front;
             }),
             TypeList<value::ListValue>
         >
@@ -243,7 +273,12 @@ static constexpr auto functions = stdx::make_indexed_tuple<KeyFor>(
             decltype([](const auto& cont, const auto& elt, const auto& that) -> value::Value {
                 // added type checking step since
                 // the interpreter only type checks on assignments
-                cont.elts->values.push_back(that->typeCheck(elt, that->typeOf(cont)));
+                const auto cont_type = that->typeOf(cont);
+                const auto& list_type = type::isList(cont_type);
+                if (not list_type)
+                    util::error("push called on non-list type: " + cont_type->text());
+
+                cont.elts->values.push_back(that->typeCheck(elt, list_type->type));
 
                 return elt;
             }),

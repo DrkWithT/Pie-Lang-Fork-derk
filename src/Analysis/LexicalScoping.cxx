@@ -1,8 +1,23 @@
 #include "LexicalScoping.hxx"
 
+#include "../Lex/Lexer.hxx"
+#include "../Parser/Parser.hxx"
+#include "../Utils/Exceptions.hxx"
 
-namespace pie {
+
+inline namespace pie {
 namespace analysis {
+
+std::string stringify(const std::vector<std::string>& spaces) {
+    if (spaces.size() == 1) return spaces[0];
+
+    std::string s = spaces[0];
+    for (const auto& space : spaces | std::views::drop(1))
+        s += "::" + space;
+
+    return s;
+}
+
 
 LexicalScoping::LexicalScoping(const size_t index) : variable_index(index) {
     env.push_back({{}, EnvTag::SCOPE});
@@ -33,7 +48,9 @@ LexicalScoping::LexicalScoping(const size_t index) : variable_index(index) {
         "__builtin_to_string",
         "__builtin_get",
         "__builtin_push",
+        "__builtin_push",
         "__builtin_pop",
+        "__builtin_pop_front",
         "__builtin_add",
         "__builtin_sub",
         "__builtin_mul",
@@ -50,6 +67,7 @@ LexicalScoping::LexicalScoping(const size_t index) : variable_index(index) {
         "__builtin_set",
         "__builtin_conditional",
         "__builtin_str_slice",
+            "__builtin_str_split",
         // //* File IO
         // "__builtin_read_file",
         // "__builtin_read_whole",
@@ -478,7 +496,7 @@ void LexicalScoping::operator()(expr::Import *import) {
     const Tokens tokens = lex::lex(src);
     if (tokens.empty()) util::error("Can't import an empty file!");
 
-    Parser p{std::move(tokens), import->path};
+    parse::Parser p{std::move(tokens), import->path};
 
     auto exprs = p.parse();
 

@@ -886,6 +886,7 @@ make
 ## Contributors
 - [ShawSumma](https://github.com/ShawSumma)
 - [DerkT](https://github.com/DrkWithT)
+- [TheDevConnor](https://github.com/TheDevConnor)
 
 
 ##### Website forked from:

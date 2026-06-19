@@ -1,8 +1,11 @@
 #include "Lexer.hxx"
 
+#include "../Utils/utils.hxx"
+#include "../Utils/Exceptions.hxx"
+
 
 inline namespace pie {
-inline namespace lex {
+namespace lex {
 
 
 TokenKind keyword(const std::string_view word) noexcept {
@@ -56,10 +59,11 @@ bool validNameChar(const char c) noexcept {
         case '>':
         case '[':
         case ']':
+        case '=': // function would only be used when checking chars that are not the first in the name
             return true;
     }
 
-    return isalnum(static_cast<unsigned char>(c));
+    return isalnum(c);
 }
 
 [[nodiscard]] Tokens lex(const std::string& src) {
@@ -164,6 +168,13 @@ bool validNameChar(const char c) noexcept {
             case '=':
                 if (src.at(index + 1) == '>')
                     lines.back().push_back({FAT_ARROW, {src[index], src[++index]}});
+                // allows for "==" to be used as a name
+                else if ((src[index + 1] == '=')) {
+                    const auto beginning = index++;
+                    for (; src.at(index + 1) == '='; ++index);
+
+                    lines.back().push_back({NAME, src.substr(beginning, index - beginning)});
+                }
                 else
                     lines.back().push_back({ASSIGN, {src[index]}});
 
@@ -218,15 +229,38 @@ bool validNameChar(const char c) noexcept {
             case '}': lines.back().push_back({R_BRACE, {src[index]}}); break;
 
             case '"':{
-                const size_t old = index;
+                std::string str;
                 while(src.at(++index) != '"') {
+                    const char c = src[index];
+
+                    if (c == '\\') {
+                        switch (src[++index]) {
+                            case '\\': str.push_back('\\'); break;
+                            case '"': str.push_back('"'); break;
+                            case 'n': str.push_back('\n'); break;
+                            case 't': str.push_back('\t'); break;
+                            case 'v': str.push_back('\v'); break;
+                            case 'b': str.push_back('\b'); break;
+                            case 'r': str.push_back('\r'); break;
+                            case 'f': str.push_back('\f'); break;
+                            case 'a': str.push_back('\a'); break;
+                            default:
+                                util::error<except::LexerError>(std::string{"Invalid escape character: \\"} + src[index]);
+                            // case '\0': str.push_back('\0');
+                        }
+                    }
+                    else str.push_back(c);
                 }
-                lines.back().push_back({STRING, src.substr(old + 1, index - old -1)});
+
+                lines.back().push_back({STRING, str});
             } break;
 
 
             default: break;
         }
+        }
+        catch(const except::LexerError& e) {
+            throw;
         }
         catch(const std::exception& err) {
             util::error("Lexing Error!");

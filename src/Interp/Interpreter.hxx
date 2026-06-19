@@ -1483,12 +1483,13 @@ public:
         if (const auto& var = getVar(loop->ID); var) return var->first;
 
 
-        enum class Type { NONE = 0, INT, BOOL, LIST, PACK, OBJECT };
+        enum class Type { NONE = 0, INT, BOOL, LIST, STR, PACK, OBJECT };
         const auto classify = [](const value::Value& v) {
-            if (std::holds_alternative<BigInt          >(v)) return Type::INT ;
-            if (std::holds_alternative<bool            >(v)) return Type::BOOL;
-            if (std::holds_alternative<value::ListValue>(v)) return Type::LIST;
-            if (std::holds_alternative<value::PackList >(v)) return Type::PACK;
+            if (std::holds_alternative<BigInt          >(v)) return Type::INT   ;
+            if (std::holds_alternative<bool            >(v)) return Type::BOOL  ;
+            if (std::holds_alternative<value::ListValue>(v)) return Type::LIST  ;
+            if (std::holds_alternative<  std::string   >(v)) return Type::STR   ;
+            if (std::holds_alternative<value::PackList >(v)) return Type::PACK  ;
             if (std::holds_alternative<value::Object   >(v)) return Type::OBJECT;
 
             return Type::NONE;
@@ -1595,6 +1596,37 @@ public:
 
                     }
                     else for ([[maybe_unused]] const auto& _ : list.elts->values) {
+                        continued = false;
+
+                        ret = std::visit(*this, loop->body->variant());
+
+                        if (broken) break;
+                    }
+                } break;
+
+                case Type::STR: {
+                    const auto& str = get<std::string>(kind);
+                    if (str.empty()) {
+                        if (not loop->els) util::error("Loop which didn't run doesn't have else branch: " + loop->stringify());
+                        return std::visit(*this, loop->els->variant());
+                    }
+
+
+                    if (not loop->var.name.empty()) {
+                        const auto& [var_name, id] = loop->var;
+
+                        for (const auto& elt : str) {
+                            continued = false;
+
+                            addVar(var_name, id, std::make_shared<value::Value>(std::string{elt}));
+
+                            ret = std::visit(*this, loop->body->variant());
+
+                            if (broken) break;
+                        }
+
+                    }
+                    else for ([[maybe_unused]] const auto& _ : str) {
                         continued = false;
 
                         ret = std::visit(*this, loop->body->variant());
@@ -3270,7 +3302,7 @@ public:
             "type_of", "len", "reset", "eval","neg", "abs", "not", "to_int", "to_double", "to_string", //"read_file"
 
             //* binary
-            "get", "push", "pop",
+            "get", "push", "pop", "pop_front",
             "add", "sub", "mul", "div", "mod",
             "pow",
             "gt", "geq", "eq", "leq", "lt",
@@ -3283,6 +3315,7 @@ public:
 
             //* quaternary 
             "str_slice", // (str, start, end, step), should I add another overload for (str, start, length)??
+            "str_split",
 
 
             //* File IO
@@ -3441,6 +3474,7 @@ public:
             "neg"      ,
             "not"      ,
             "pop"      ,
+            "pop_front",
             "to_int"   ,
             "to_double",
             "to_string",
@@ -3471,6 +3505,7 @@ public:
         if (name == "neg"      ) return execute<1>(stdx::get<S<"neg"       >>(functions).value, {value1}, this);
         if (name == "not"      ) return execute<1>(stdx::get<S<"not"       >>(functions).value, {value1}, this);
         if (name == "pop"      ) return execute<1>(stdx::get<S<"pop"       >>(functions).value, {value1}, this);
+        if (name == "pop_front") return execute<1>(stdx::get<S<"pop_front">>(functions).value, {value1}, this);
         if (name == "to_int"   ) return execute<1>(stdx::get<S<"to_int"    >>(functions).value, {value1}, this);
         if (name == "to_double") return execute<1>(stdx::get<S<"to_double" >>(functions).value, {value1}, this);
         if (name == "to_string") return execute<1>(stdx::get<S<"to_string" >>(functions).value, {value1}, this);
@@ -3481,6 +3516,7 @@ public:
         const auto eager = {
             "get"sv,
             "push"sv,
+            "str_split"sv,
             "add"sv,
             "sub"sv,
             "mul"sv,
@@ -3503,8 +3539,9 @@ public:
             const auto& value2 = std::visit(*this, args[1]->variant());
 
             // this is disgusting..I know
-            if (name == "get" ) return execute<2>(stdx::get<S<"get" >>(functions).value, {value1, value2}, this);
-            if (name == "push") return execute<2>(stdx::get<S<"push">>(functions).value, {value1, value2}, this);
+            if (name == "get"      ) return execute<2>(stdx::get<S<"get"      >>(functions).value, {value1, value2}, this);
+            if (name == "push"     ) return execute<2>(stdx::get<S<"push"     >>(functions).value, {value1, value2}, this);
+            if (name == "str_split") return execute<2>(stdx::get<S<"str_split">>(functions).value, {value1, value2}, this);
 
             if (name == "add"    ) return execute<2>(stdx::get<S<"add"    >>(functions).value, {value1, value2}, this);
             if (name == "sub"    ) return execute<2>(stdx::get<S<"sub"    >>(functions).value, {value1, value2}, this);

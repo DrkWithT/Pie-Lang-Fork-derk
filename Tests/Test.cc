@@ -3163,7 +3163,7 @@ func2 = (x, y, z, a) => {
 };
 
 out = (As: ...Any) => {
-    func = (a, b, c, args: ...Any) => func2(a=300, As..., args...);
+    func = (a, b, c, args: ...Any) => func2(a = 300, As..., args...);
 
     func(1, 2, 3, 5);
 };

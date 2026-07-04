@@ -120,12 +120,13 @@ struct String : Expr {
 
 struct Name : Expr {
     std::string name;
+    ssize_t id_;
 
-    explicit Name(std::string n) noexcept : name{std::move(n)} {}
+    explicit Name(std::string n, ssize_t id) noexcept : name{std::move(n)}, id_ {id} {}
 
     ssize_t& getID() override { throw std::runtime_error {"unsupported getID() call"}; }
 
-    ssize_t getID() const override { return -1; };
+    ssize_t getID() const override { return id_; };
 
     std::string stringify(const size_t = 0) const override { return name; }
 

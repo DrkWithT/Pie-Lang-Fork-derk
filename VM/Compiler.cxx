@@ -509,7 +509,7 @@ namespace pie {
             } else if (auto expr_binary_op = std::get_if<expr::BinOp*>(&expr_variant); expr_binary_op) {
                 return emit_binary_op(*expr_binary_op);
             } else {
-                std::println(std::cerr, "Compile error at emit_expr(): unknown expression type!");
+                std::println(std::cerr, "Compile error at emit_expr(): unknown expression type:\n\nSource: {}\n", any_expr->stringify());
                 return false;
             }
         }

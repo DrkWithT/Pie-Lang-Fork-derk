@@ -1,8 +1,9 @@
-Pie
-run_tests
+build/
+run_tests/
 code/
 .vscode/
 remote_includes/
+Pie
 *.dSYM/
 *.txt
 testing/

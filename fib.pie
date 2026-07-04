@@ -1,0 +1,18 @@
+.: test fibonacci
+
+fib = (n) => __builtin_conditional(
+    __builtin_lt(n, 2),
+    n,
+    __builtin_add(
+        fib(__builtin_sub(n, 1)),
+        fib(__builtin_sub(n, 2))
+    )
+);
+
+.: assignments are broken if done with builtin now for some reason :(
+__builtin_print(__builtin_now());
+__builtin_print(fib(20));
+__builtin_print(__builtin_now());
+
+
+true;

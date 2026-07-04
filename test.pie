@@ -1,0 +1,16 @@
+infix + = (a0, a1) => __builtin_add(a0, a1);
+infix - = (a3, a4) => __builtin_sub(a3, a4);
+infix * = (a5, a6) => __builtin_mul(a5, a6);
+infix / = (a7, a8) => __builtin_div(a7, a8);
+prefix(!) not = (a9) => __builtin_not(a9);
+
+printOne = (b1) => __builtin_print(b1);
+isNeg = (b2) => __builtin_lt(b2, 0);
+
+printOne(2 * 3);
+printOne(3 + 4);
+printOne(6 - 2);
+printOne(4 / 2);
+printOne(not false);
+
+true;

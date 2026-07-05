@@ -19,8 +19,8 @@
 #include <cassert>
 #include <dlfcn.h>
 
-#include <stdx/tuple.hpp>
-#include <ffi.h>
+#include "stdx/tuple.hpp"
+#include <ffi/ffi.h>
 
 
 #include "BuiltinFunctions.hxx"

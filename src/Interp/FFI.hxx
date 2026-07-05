@@ -6,7 +6,7 @@
 #include "../Value/Value.hxx"
 #include "../Utils/utils.hxx"
 
-#include <ffi.h>
+#include <ffi/ffi.h>
 #include <memory>
 #include <ranges>
 

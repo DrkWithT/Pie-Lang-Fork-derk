@@ -6,7 +6,7 @@
 
 #include <ranges>
 #include <stdx/tuple.hpp>
-#include <ffi.h>
+#include <ffi/ffi.h>
 
 #include "../Utils/ConstexprLookup.hxx"
 #include "../Utils/Exceptions.hxx"

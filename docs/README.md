@@ -11,6 +11,10 @@
 - Bare-bones (if it doesn't need to be keyword, then it isn't + no operators)
 - Still quirky (different even if the difference is not good)
 
+## Usage
+ - Official build: `make`
+ - Experimental build: `cmake -S . -B build -DDEBUG_BUILD:BOOL=1 && cmake --build build`
+ - Get started: `./Pie --help`
 
 ### Index:
 - [Variables](#variables)
